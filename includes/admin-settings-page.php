@@ -16,12 +16,11 @@
  * @php      version 7.4
  * @link     https://rodojo.dev/
  */
-
 ?>
 <div class="wrap">
     <h1>Stock Data Plugin Settings</h1>
 
-    <form method="post" action="options.php">
+    <form method="post" action="">
         <?php
         settings_fields('sdp_settings_group');
         do_settings_sections('sdp_settings_group');
@@ -41,7 +40,105 @@
         <?php submit_button(); ?>
     </form>
 
-    <hr>
+    <?php
+    // When saving API key
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (isset($_POST['sdp_marketstack_api_key'])) {
+            $new_api_key = sanitize_text_field($_POST['sdp_marketstack_api_key']);
+            // Validate the API key
+            if (sdp_validate_api_key($new_api_key)) {
+                sdp_save_marketstack_api_key($new_api_key);
+                add_settings_error('sdp_messages', 'sdp_message', 'API Key saved successfully', 'updated');
+                echo '<div class="updated"><p>API Updated Successfully!</p></div>';
+            } else {
+                add_settings_error('sdp_messages', 'sdp_message', 'Invalid API Key', 'error');
+            }
+        }
+    }
+    ?>
+
+    <!-- Search on Internal Stock DB -->
+    <h2>Live Stock Symbol Search</h2>
+    <input type="text" id="ticker-search" placeholder="Search stock symbol..." />
+    <div id="results"></div>
+    <script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/search.js'; ?>"></script>
+
+
+
+    <!-- Refresh Tickers Database -->
+    <h2>Refresh Internal Tickers Database V1</h2>
+    <form method="post">
+        <?php wp_nonce_field('refresh_tickers_action', 'refresh_tickers_nonce'); ?>
+        <p>Click the button below to refresh the internal tickers database.</p>
+        <p>Caution: This will cost about 50 API Queries. Only need to run when your ticker is not here, but is on MarketStack</p>
+        <?php submit_button('Refresh Tickers Database'); ?>
+    </form>
+
+    <?php
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['refresh_tickers_nonce'])) {
+        if (wp_verify_nonce($_POST['refresh_tickers_nonce'], 'refresh_tickers_action')) {
+            // Delete existing cached tickers
+            delete_transient('sdp_marketstack_tickers');
+
+            global $wpdb;
+
+            $api_handler = new SDP_API_Handler();
+            $tickers = $api_handler->fetch_marketstack_tickers();
+
+            // Check for errors
+            if (is_wp_error($tickers)) {
+                echo '<div class="error"><p>Error refreshing tickers: ' .
+                    esc_html($tickers->get_error_message()) . '</p></div>';
+                return;
+            }
+
+            // Validate tickers
+            if (empty($tickers)) {
+                echo '<div class="error"><p>No tickers were retrieved from Marketstack.</p></div>';
+                return;
+            }
+
+            // Clear existing tickers in db
+            $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}market_tickers");
+
+            // Insert new tickers
+            $insert_count = 0;
+            foreach ($tickers as $ticker) {
+                // Use 'ticker' instead of 'symbol'
+                if (isset($ticker['ticker'])) {
+                    $wpdb->insert("{$wpdb->prefix}market_tickers", [
+                        'symbol' => $ticker['ticker'],
+                    ]);
+                    $insert_count++;
+                }
+            }
+
+            echo '<div class="updated"><p>Tickers refreshed successfully! Inserted ' .
+                esc_html($insert_count) . ' tickers.</p></div>';
+        }
+    }
+    ?>
+
+    <h3>Check & Add Tracked Tickers</h3>
+    <textarea id="bulk-tickers" rows="3" placeholder="Enter symbols like: AAPL,TSLA,AI"></textarea>
+    <br>
+    <button id="check-tickers" class="button button-primary">Check Tickers</button>
+
+    <div id="check-results"></div>
+
+    <h3>Currently Tracked Tickers</h3>
+    <table id="tracked-ticker-table">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <div id="pagination-controls"></div>
+
 
     <h2>Manage Tickers</h2>
 
@@ -58,7 +155,8 @@
             </tr>
         </table>
 
-        <?php submit_button('Add Tickers'); ?>
+        <?php submit_button('Add Tickers');
+        ?>
     </form>
 
     <h3>Current Tickers</h3>
@@ -74,12 +172,16 @@
     $total_items = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}stock_tickers");
     $total_pages = ceil($total_items / $items_per_page);
 
-    // get paginated results
-    $tickers = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}stock_tickers ORDER BY symbol ASC LIMIT %d OFFSET %d",
-        $items_per_page,
-        $offset
-    ));
+    // Fetch paginated results without search query
+    $tickers = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}stock_tickers 
+            ORDER BY symbol ASC 
+            LIMIT %d OFFSET %d",
+            $items_per_page,
+            $offset
+        )
+    );
 
     if ($tickers):
     ?>
@@ -88,7 +190,6 @@
                 <tr>
                     <th>ID</th>
                     <th>Symbol</th>
-                    <th>Market</th>
                     <th>Added On</th>
                 </tr>
             </thead>
@@ -97,7 +198,6 @@
                     <tr>
                         <td><?php echo esc_html($ticker->id); ?></td>
                         <td><?php echo esc_html($ticker->symbol); ?></td>
-                        <td><?php echo esc_html($ticker->market); ?></td>
                         <td><?php echo esc_html($ticker->created_at); ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -168,6 +268,64 @@
     });
 </script>
 
+<?php
+// Display historical data if view_ticker_id is set
+if (!empty($_GET['view_ticker_id'])):
+    echo '<h3>Historical Data</h3>';
+    $ticker_id = intval($_GET['view_ticker_id']);
+    $prices = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d ORDER BY date DESC",
+        $ticker_id
+    ));
+else:
+    echo '<p>Select a ticker to view historical data.</p>';
+    return;
+endif;
+?>
+
+<table class="widefat striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Open</th>
+            <th>High</th>
+            <th>Low</th>
+            <th>Close</th>
+            <th>Adj Close</th>
+            <th>Volume</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php foreach ($prices as $price): ?>
+            <tr>
+                <td><?php echo esc_html($price->date); ?></td>
+                <td><?php echo esc_html($price->open); ?></td>
+                <td><?php echo esc_html($price->high); ?></td>
+                <td><?php echo esc_html($price->low); ?></td>
+                <td><?php echo esc_html($price->close); ?></td>
+                <td><?php echo esc_html($price->adj_close); ?></td>
+                <td><?php echo esc_html(number_format($price->volume)); ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
+
+<div class="tablenav">
+    <div class="tablenav-pages">
+        <?php
+        echo paginate_links([
+            'base' => add_query_arg(['view_ticker_id' => $ticker_id, 'prices_paged' => '%#%']),
+            'format' => '',
+            'prev_text' => __('« Prev'),
+            'next_text' => __('Next »'),
+            'total' => $total_pages,
+            'current' => $current_page
+        ]);
+        ?>
+    </div>
+</div>
+
+
 <!-- Add Historical Pulling -->
 <h2>Manual Historical Data Pull</h2>
 <form method="post">
@@ -198,24 +356,6 @@
 
 // Handlers
 
-// handle API key update
-// Replace existing API key retrieval
-$api_key = sdp_get_marketstack_api_key();
-
-// When saving API key
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['sdp_marketstack_api_key'])) {
-        $new_api_key = sanitize_text_field($_POST['sdp_marketstack_api_key']);
-        
-        // Validate the API key
-        if (sdp_validate_api_key($new_api_key)) {
-            sdp_save_marketstack_api_key($new_api_key);
-            add_settings_error('sdp_messages', 'sdp_message', 'API Key saved successfully', 'updated');
-        } else {
-            add_settings_error('sdp_messages', 'sdp_message', 'Invalid API Key', 'error');
-        }
-    }
-}
 
 // handle new tickers
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_ticker_nonce'])) {
@@ -298,98 +438,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['manual_pull_nonce']))
     }
 }
 
-// handle view historical data
-if (!empty($_GET['view_ticker_id'])) {
-    try {
-        global $wpdb;
-        $ticker_id = intval($_GET['view_ticker_id']);
-
-        // Pagination setup
-        $items_per_page = 25;
-        $current_page = max(1, isset($_GET['prices_paged']) ? intval($_GET['prices_paged']) : 1);
-        $offset = ($current_page - 1) * $items_per_page;
-
-        // Fetch historical prices
-        $prices = $wpdb->get_results($wpdb->prepare(
-            "
-            SELECT * FROM {$wpdb->prefix}stock_prices 
-            WHERE ticker_id = %d 
-            ORDER BY date DESC 
-            LIMIT %d OFFSET %d",
-            $ticker_id,
-            $items_per_page,
-            $offset
-        ));
-
-        if (!$prices) {
-            throw new Exception('No historical data found.');
-        }
-
-        // Fetch total records for pagination
-        $total_items = $wpdb->get_var($wpdb->prepare(
-            "
-            SELECT COUNT(*) FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d",
-            $ticker_id
-        ));
-        $total_pages = ceil($total_items / $items_per_page);
-    } catch (Exception $e) {
-        echo '<div class="error"><p>⚠️ Error: ' . esc_html($e->getMessage()) . '</p></div>';
-        error_log('Stock Data Plugin Error: ' . $e->getMessage());
-        return;
-    }
-}
-
-?>
-<h3>Historical Prices for <?php echo esc_html($wpdb->get_var($wpdb->prepare(
-                                "
-        SELECT symbol FROM {$wpdb->prefix}stock_tickers WHERE id = %d",
-                                $ticker_id
-                            ))); ?>
-</h3>
-
-<table class="widefat striped">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Open</th>
-            <th>High</th>
-            <th>Low</th>
-            <th>Close</th>
-            <th>Adj Close</th>
-            <th>Volume</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php foreach ($prices as $price): ?>
-            <tr>
-                <td><?php echo esc_html($price->date); ?></td>
-                <td><?php echo esc_html($price->open); ?></td>
-                <td><?php echo esc_html($price->high); ?></td>
-                <td><?php echo esc_html($price->low); ?></td>
-                <td><?php echo esc_html($price->close); ?></td>
-                <td><?php echo esc_html($price->adj_close); ?></td>
-                <td><?php echo esc_html(number_format($price->volume)); ?></td>
-            </tr>
-        <?php endforeach; ?>
-    </tbody>
-</table>
-
-<div class="tablenav">
-    <div class="tablenav-pages">
-        <?php
-        echo paginate_links([
-            'base' => add_query_arg(['view_ticker_id' => $ticker_id, 'prices_paged' => '%#%']),
-            'format' => '',
-            'prev_text' => __('« Prev'),
-            'next_text' => __('Next »'),
-            'total' => $total_pages,
-            'current' => $current_page
-        ]);
-        ?>
-    </div>
-</div>
-
-<?php
 // Functions
 
 // Suggest tickers from levenstein distance from market_tickers
@@ -433,7 +481,7 @@ function update_existing_record($ticker_id, $stock_day, $date)
 {
     global $wpdb;
     // Update existing record
-    try{
+    try {
         $wpdb->update(
             "{$wpdb->prefix}stock_prices",
             [
@@ -477,7 +525,7 @@ function update_existing_record($ticker_id, $stock_day, $date)
                 '%s'
             ]
         );
-    return True;
+        return True;
     } catch (Exception $e) {
         error_log('Stock Data Plugin Error: ' . $e->getMessage());
         return False;
