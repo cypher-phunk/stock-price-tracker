@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Stock Data Plugin
  * Description: Manages stock tickers and historical data using Marketstack API.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: RoDojo Web Development
  *
  */
@@ -56,8 +56,8 @@ function sdp_create_db_tables() {
         exchange VARCHAR(10),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        FOREIGN KEY (ticker_id) REFERENCES {$wpdb->prefix}stock_tickers(id),
-        UNIQUE KEY unique_date_ticker (ticker_id, date)
+        UNIQUE KEY unique_date_ticker (ticker_id, date),
+        FOREIGN KEY (ticker_id) REFERENCES {$wpdb->prefix}stock_tickers(id)
     ) ENGINE=InnoDB $charset_collate;";
 
     $sql_market_tickers = "CREATE TABLE {$wpdb->prefix}market_tickers (
@@ -80,12 +80,18 @@ require_once(SDP_PLUGIN_PATH . 'includes/database-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/class-sdp-api.php');
 require_once(SDP_PLUGIN_PATH . 'includes/helpers.php');
 require_once(SDP_PLUGIN_PATH . 'includes/api-key-management.php');
+require_once(SDP_PLUGIN_PATH . 'includes/acf-hooks.php');
 
 // Enqueue admin styles
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
+add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
 
 function sdp_enqueue_admin_styles() {
     wp_enqueue_style('sdp-admin-style', SDP_PLUGIN_URL . 'assets/css/style.css');
+}
+
+function sdp_enqueue_admin_scripts() {
+    wp_enqueue_script('ticker-autocomplete', SDP_PLUGIN_URL . 'assets/js/admin.js', ['jquery'], null, true);
 }
 
 // Securely register settings (API key)
