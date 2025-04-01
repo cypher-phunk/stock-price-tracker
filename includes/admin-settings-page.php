@@ -352,6 +352,11 @@ endif;
     <?php submit_button('Fetch Historical Data'); ?>
 </form>
 
+<form method="post">
+    <?php wp_nonce_field('bulk_pull_action', 'bulk_pull_nonce'); ?>
+    <input type="submit" name="bulk_pull_submit" class="button button-primary" value="Bulk Pull All Ticker History">
+</form>
+
 <?php
 
 // Handlers
@@ -434,6 +439,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['manual_pull_nonce']))
                 }
             }
             echo '<div class="updated"><p>Historical data successfully fetched and saved.</p></div>';
+        }
+    }
+}
+
+// handle bulk data pull
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_pull_nonce'])) {
+    if (wp_verify_nonce($_POST['bulk_pull_nonce'], 'bulk_pull_action')) {
+        $date_from = isset($_POST['date_from']) ? date('Y-m-d', strtotime($_POST['date_from'])) : date('Y-m-d', strtotime('-999 days'));
+        $date_to   = isset($_POST['date_to']) ? date('Y-m-d', strtotime($_POST['date_to'])) : date('Y-m-d');
+
+        $tickers = $wpdb->get_results("SELECT id, symbol FROM {$wpdb->prefix}stock_tickers");
+
+        if (empty($tickers)) {
+            echo '<div class="error"><p>No tracked tickers found.</p></div>';
+        } else {
+            $api_handler = new SDP_API_Handler();
+
+            foreach ($tickers as $ticker) {
+                $data = $api_handler->fetch_historical_data($ticker->symbol, $date_from, $date_to);
+
+                if (is_wp_error($data)) {
+                    error_log("Error for {$ticker->symbol}: " . $data->get_error_message());
+                    continue;
+                }
+
+                foreach ($data as $stock_day) {
+                    $date = date('Y-m-d', strtotime($stock_day['date']));
+
+                    $existing_record = $wpdb->get_row(
+                        $wpdb->prepare(
+                            "SELECT id FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d AND date = %s",
+                            $ticker->id,
+                            $date
+                        )
+                    );
+
+                    if (!$existing_record || !update_existing_record($ticker->id, $stock_day, $date)) {
+                        new_record($stock_day, $ticker->id, $date);
+                    }
+
+                    error_log("Saved {$ticker->symbol} - $date");
+                }
+            }
+
+            echo '<div class="updated"><p>Bulk historical data fetch completed successfully.</p></div>';
         }
     }
 }

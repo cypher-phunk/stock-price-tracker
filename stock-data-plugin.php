@@ -69,9 +69,24 @@ function sdp_create_db_tables()
         PRIMARY KEY (id)
     ) $charset_collate;";
 
+    $sql_stock_company_info = "CREATE TABLE {$wpdb->prefix}stock_company_info (
+        id INT(11) NOT NULL AUTO_INCREMENT,
+        ticker_id INT(11) NOT NULL,
+        name VARCHAR(255),
+        exchange VARCHAR(10),
+        sector VARCHAR(255),
+        industry VARCHAR(255),
+        website VARCHAR(255),
+        about TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        FOREIGN KEY (ticker_id) REFERENCES {$wpdb->prefix}stock_tickers(id)
+    ) $charset_collate;";
+
     dbDelta($sql_tickers);
     dbDelta($sql_prices);
     dbDelta($sql_market_tickers);
+    dbDelta($sql_stock_company_info);
 
     // Update version after creating tables
     update_option('sdp_plugin_version', SDP_PLUGIN_VERSION);
@@ -212,7 +227,8 @@ function search_market_tickers_callback()
 
 // AJAX Handler for checking tickers against DB
 add_action('wp_ajax_check_stock_tickers', 'check_stock_tickers_callback');
-function check_stock_tickers_callback() {
+function check_stock_tickers_callback()
+{
     global $wpdb;
 
     $input = $_POST['tickers'] ?? [];
@@ -233,11 +249,16 @@ function check_stock_tickers_callback() {
     $valid_symbols = $wpdb->get_col($query);
 
     // Step 2: Find which of those are already in the tracked stock_tickers table
-    $query2 = $wpdb->prepare(
-        "SELECT symbol FROM $stock_table WHERE symbol IN ($placeholders)",
-        ...$valid_symbols
-    );
-    $already_tracked = $wpdb->get_col($query2);
+    if (!empty($valid_symbols)) {
+        $placeholders2 = implode(',', array_fill(0, count($valid_symbols), '%s'));
+        $query2 = $wpdb->prepare(
+            "SELECT symbol FROM $stock_table WHERE symbol IN ($placeholders2)",
+            ...$valid_symbols
+        );
+        $already_tracked = $wpdb->get_col($query2);
+    } else {
+        $already_tracked = [];
+    }
 
     // Calculate
     $validated_input = array_map('strtoupper', $valid_symbols);
@@ -246,15 +267,16 @@ function check_stock_tickers_callback() {
     $invalid = array_diff($input, $validated_input); // input not in main list
 
     wp_send_json_success([
-        'existing' => $existing,
-        'missing' => $to_add,
-        'invalid' => $invalid
+        'existing' => array_values($existing),
+        'missing' => array_values($to_add),
+        'invalid' => array_values($invalid)
     ]);
 }
 
 
 add_action('wp_ajax_get_stock_tickers', 'get_stock_tickers_callback');
-function get_stock_tickers_callback() {
+function get_stock_tickers_callback()
+{
     global $wpdb;
     $table = $wpdb->prefix . 'stock_tickers';
     $symbols = $wpdb->get_col("SELECT symbol FROM $table ORDER BY symbol ASC");
@@ -262,7 +284,8 @@ function get_stock_tickers_callback() {
 }
 
 add_action('wp_ajax_remove_stock_ticker', 'remove_stock_ticker_callback');
-function remove_stock_ticker_callback() {
+function remove_stock_ticker_callback()
+{
     global $wpdb;
 
     $symbol = strtoupper(sanitize_text_field($_POST['symbol'] ?? ''));
@@ -275,7 +298,8 @@ function remove_stock_ticker_callback() {
 }
 
 add_action('wp_ajax_get_stock_tickers_paginated', 'get_stock_tickers_paginated_callback');
-function get_stock_tickers_paginated_callback() {
+function get_stock_tickers_paginated_callback()
+{
     global $wpdb;
 
     $table = $wpdb->prefix . 'stock_tickers';
@@ -285,7 +309,8 @@ function get_stock_tickers_paginated_callback() {
 
     $tickers = $wpdb->get_col($wpdb->prepare(
         "SELECT symbol FROM $table ORDER BY symbol ASC LIMIT %d OFFSET %d",
-        $per_page, $offset
+        $per_page,
+        $offset
     ));
 
     $total = $wpdb->get_var("SELECT COUNT(*) FROM $table");
@@ -295,4 +320,62 @@ function get_stock_tickers_paginated_callback() {
         'tickers' => $tickers,
         'total_pages' => $total_pages
     ]);
+}
+
+add_action('wp_ajax_add_stock_tickers', 'add_stock_tickers_callback');
+function add_stock_tickers_callback()
+{
+    global $wpdb;
+
+    $input = $_POST['tickers'] ?? [];
+    if (!is_array($input)) wp_send_json_error();
+
+    $table = $wpdb->prefix . 'stock_tickers';
+    $added = [];
+
+    foreach ($input as $symbol) {
+        $symbol = sanitize_text_field(strtoupper($symbol));
+
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE symbol = %s",
+            $symbol
+        ));
+
+        if (!$exists) {
+            $wpdb->insert($table, ['symbol' => $symbol]);
+            $added[] = $symbol;
+        }
+        grab_company_info($symbol); // Fetch company info
+    }
+
+    wp_send_json_success(['added' => $added]);
+}
+
+function grab_company_info($symbol)
+{
+    $api = new SDP_API_Handler();
+    $company_info = $api->get_company_info($symbol);
+
+    if ($company_info) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'stock_company_info';
+
+        $data = [
+            'ticker_id' => $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s",
+                $symbol
+            )),
+            'name' => $company_info['name'] ?? null,
+            'exchange' => $company_info['stock_exchanges'][
+            'sector' => $company_info['sector'] ?? null,
+            'industry' => $company_info['industry'] ?? null,
+            'website' => $company_info['website'] ?? null,
+            'about' => $company_info['about'] ?? null
+        ];
+
+        // Insert or update company info
+        if ($data['ticker_id']) {
+            $wpdb->replace($table, $data);
+        }
+    }
 }

@@ -33,9 +33,7 @@ jQuery(document).ready(function($) {
             });
         }, 300);
     });
-});
-jQuery(document).ready(function($) {
-    $('#check-tickers').on('click', function() {
+    $(document).on('click', '#check-tickers', function() {
         const input = $('#bulk-tickers').val();
         const tickers = input.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
 
@@ -58,8 +56,11 @@ jQuery(document).ready(function($) {
                     if (response.data.existing.length > 0) {
                         html += '<p><strong>Already Tracked:</strong> ' + response.data.existing.join(', ') + '</p>';
                     }
+                    if (response.data.invalid.length > 0) {
+                        html += '<p style="color: red;"><strong>Invalid Tickers:</strong> ' + response.data.invalid.join(', ') + '</p>';
+                    }
                     if (response.data.missing.length > 0) {
-                        html += '<p><strong>Missing Tickers:</strong> ' + response.data.missing.join(', ') + '</p>';
+                        html += '<p style="color: green;"><strong>Missing Tickers 1:</strong> ' + response.data.missing.join(', ') + '</p>';
                         html += '<button id="add-tickers" class="button">Add Missing Tickers</button>';
                         $('#check-results').data('to-add', response.data.missing);
                     }
@@ -84,24 +85,27 @@ jQuery(document).ready(function($) {
                 if (response.success) {
                     let html = '';
                     
-                    if (response.data.existing.length > 0) {
+                    if (response.data.existing && response.data.existing.length > 0) {
                         html += '<p><strong>Already Tracked:</strong> ' + response.data.existing.join(', ') + '</p>';
                     }
-                    if (response.data.missing.length > 0) {
+                    if (response.data.missing && response.data.missing.length > 0) {
                         html += '<p><strong>Can Be Added:</strong> ' + response.data.missing.join(', ') + '</p>';
                         html += '<button id="add-tickers" class="button">Add Missing Tickers</button>';
                         $('#check-results').data('to-add', response.data.missing);
                     }
-                    if (response.data.invalid.length > 0) {
+                    if (response.data.invalid && response.data.invalid.length > 0) {
                         html += '<p style="color: red;"><strong>Invalid Tickers (not found in database):</strong> ' + response.data.invalid.join(', ') + '</p>';
                     }
                 
                     $('#check-results').html(html);
+                    // Reload the page
+                    loadTrackedTickers();
                 }
             }
         });
     });
 });
+
 function loadTrackedTickers(page = 1, perPage = 25) {
     jQuery.ajax({
         url: ajaxurl,
