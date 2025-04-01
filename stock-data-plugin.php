@@ -367,7 +367,7 @@ function grab_company_info($symbol)
             )),
             'name' => $company_info['name'] ?? null,
             'exchange' => $company_info['stock_exchanges'][
-            'sector' => $company_info['sector'] ?? null,
+            'sector' => $company_info['sector'] ?? null, # TODO
             'industry' => $company_info['industry'] ?? null,
             'website' => $company_info['website'] ?? null,
             'about' => $company_info['about'] ?? null
