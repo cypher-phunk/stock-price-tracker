@@ -3,7 +3,6 @@
 // includes/acf-hooks.php
 
 add_action('wp_ajax_search_tickers', 'search_tickers_callback');
-
 function search_tickers_callback() {
     global $wpdb;
     $search = sanitize_text_field($_GET['q']);
@@ -39,3 +38,4 @@ function load_shortlist_tickers($field) {
 
     return $field;
 }
+

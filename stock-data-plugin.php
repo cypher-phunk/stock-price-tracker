@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SDP_PLUGIN_VERSION', '1.0.2'); // increment on schema change
+define('SDP_PLUGIN_VERSION', '1.0.5'); // increment on schema change
 
 // Define plugin constants
 define('SDP_PLUGIN_PATH', plugin_dir_path(__FILE__));
@@ -35,6 +35,7 @@ function sdp_create_db_tables()
         symbol VARCHAR(10) NOT NULL UNIQUE,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        post_created TINYINT(1) DEFAULT 0,
         PRIMARY KEY (id)
     ) $charset_collate;";
 
@@ -360,14 +361,20 @@ function grab_company_info($symbol)
         global $wpdb;
         $table = $wpdb->prefix . 'stock_company_info';
 
+        $exchange = null;
+        if (!empty($company_info['stock_exchanges']) && is_array($company_info['stock_exchanges'])) {
+            $last_exchange = end($company_info['stock_exchanges']);
+            $exchange = $last_exchange['acronym1'] ?? null;
+        }
+
         $data = [
             'ticker_id' => $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s",
                 $symbol
             )),
             'name' => $company_info['name'] ?? null,
-            'exchange' => $company_info['stock_exchanges'][
-            'sector' => $company_info['sector'] ?? null, # TODO
+            'exchange' => $exchange,
+            'sector' => $company_info['sector'] ?? null,
             'industry' => $company_info['industry'] ?? null,
             'website' => $company_info['website'] ?? null,
             'about' => $company_info['about'] ?? null
@@ -375,7 +382,114 @@ function grab_company_info($symbol)
 
         // Insert or update company info
         if ($data['ticker_id']) {
-            $wpdb->replace($table, $data);
+            // Check if the ticker already exists
+            $existing = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM $table WHERE ticker_id = %d",
+                $data['ticker_id']
+            ));
+            if ($existing) {
+                // Update existing record
+                $wpdb->update($table, $data, ['ticker_id' => $data['ticker_id']]);
+            } else {
+                // Insert new record
+                $wpdb->insert($table, $data);
+            }
         }
     }
+}
+
+function create_stock_post($symbol)
+{
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'stock_tickers';
+    $ticker_id = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM $table WHERE symbol = %s",
+        $symbol
+    ));
+    $company_info = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}stock_company_info WHERE ticker_id = %d",
+        $ticker_id
+    ));
+    if (!$ticker_id) {
+        return;
+    }
+    // Check if post exists in stock post type using wp get_posts
+    // Search by post title
+    $post = get_posts([
+        'post_type' => 'stock',
+        'post_status' => 'publish',
+        'title' => $symbol
+    ]);
+    if ($post) {
+        // Update post ACF Fields
+        if (function_exists('update_field')) {
+            update_field('company_name', $company_info->name, $post[0]->ID);
+            update_field('ticker_symbol', $symbol, $post[0]->ID);
+            update_field('stock_exchange', $company_info->exchange, $post[0]->ID);
+            update_field('sector', $company_info->sector, $post[0]->ID);
+            update_field('industry', $company_info->industry, $post[0]->ID);
+            update_field('website', $company_info->website, $post[0]->ID);
+            update_field('about', $company_info->about, $post[0]->ID);
+        }
+        return;
+    }
+    // Create post
+    $post_id = wp_insert_post([
+        'post_title' => $symbol,
+        'post_type' => 'stock',
+        'post_status' => 'publish'
+    ]);
+
+    if (!is_wp_error($post_id)) {
+        if (function_exists('update_field')) {
+            update_field('company_name', $company_info->name, $post_id);
+            update_field('ticker_symbol', $symbol, $post_id);
+            update_field('stock_exchange', $company_info->exchange, $post_id);
+            update_field('sector', $company_info->sector, $post_id);
+            update_field('industry', $company_info->industry, $post_id);
+            update_field('website', $company_info->website, $post_id);
+            update_field('about', $company_info->about, $post_id);
+            update_field('ticker_id', $ticker_id, $post_id);
+        }
+        else {
+            error_log('ACF function not found');
+        }
+        $wpdb->update(
+            $table,
+            ['post_created' => 1],
+            ['id' => $symbol->id]
+        );
+    }
+    else {
+        error_log('Error creating post: ' . $post_id->get_error_message());
+    }
+}
+
+add_action('wp_ajax_grab_company_info', 'grab_company_info_callback');
+function grab_company_info_callback()
+{
+    $symbol = strtoupper(sanitize_text_field($_POST['symbol'] ?? ''));
+    if (!$symbol) wp_send_json_error();
+
+    grab_company_info($symbol);
+    create_stock_post($symbol);
+
+    wp_send_json_success();
+}
+
+add_action('wp_ajax_fetch_all_company_info', 'fetch_all_company_info_callback');
+function fetch_all_company_info_callback()
+{
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'stock_tickers';
+    $tickers = $wpdb->get_col("SELECT symbol FROM $table");
+
+    foreach ($tickers as $symbol) {
+        grab_company_info($symbol);
+        create_stock_post($symbol);
+    }
+
+    wp_send_json_success();
 }

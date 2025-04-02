@@ -124,6 +124,7 @@ function loadTrackedTickers(page = 1, perPage = 25) {
                     tbody.append(`
                         <tr>
                             <td>${symbol}</td>
+                            <td><button class="add-company-info button" data-symbol="${symbol}">Add Company Info</button></td>
                             <td><button class="remove-ticker button" data-symbol="${symbol}">Remove</button></td>
                         </tr>
                     `);
@@ -140,6 +141,26 @@ function loadTrackedTickers(page = 1, perPage = 25) {
         }
     });
 }
+
+// Event: click add company info
+jQuery(document).on('click', '.add-company-info', function () {
+    const symbol = jQuery(this).data('symbol');
+    jQuery.ajax({
+        url: ajaxurl,
+        method: 'POST',
+        data: {
+            action: 'grab_company_info',
+            symbol: symbol
+        },
+        success: function (response) {
+            if (response.success) {
+                alert('Company info added successfully!');
+            } else {
+                alert('Failed to add company info.');
+            }
+        }
+    });
+});
 
 // Event: click remove
 jQuery(document).on('click', '.remove-ticker', function () {

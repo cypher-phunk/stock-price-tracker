@@ -17,6 +17,8 @@
  * @link     https://rodojo.dev/
  */
 ?>
+<script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/search.js'; ?>"></script>
+<script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/ticker-posts.js'; ?>"></script>
 <div class="wrap">
     <h1>Stock Data Plugin Settings</h1>
 
@@ -61,9 +63,6 @@
     <h2>Live Stock Symbol Search</h2>
     <input type="text" id="ticker-search" placeholder="Search stock symbol..." />
     <div id="results"></div>
-    <script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/search.js'; ?>"></script>
-
-
 
     <!-- Refresh Tickers Database -->
     <h2>Refresh Internal Tickers Database V1</h2>
@@ -139,6 +138,10 @@
 
     <div id="pagination-controls"></div>
 
+    <div>
+        <!-- Add all ticker posts here -->
+        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add Ticker Posts***</button>
+    </div>
 
     <h2>Manage Tickers</h2>
 
@@ -160,6 +163,7 @@
     </form>
 
     <h3>Current Tickers</h3>
+
     <?php
     global $wpdb;
 
@@ -219,6 +223,7 @@
                 ?>
             </div>
         </div>
+
 
     <?php else: ?>
         <p>No tickers found. Please add some!</p>

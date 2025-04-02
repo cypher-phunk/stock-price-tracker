@@ -235,7 +235,7 @@ class SDP_API_Handler {
      * 
      */
     public function get_company_info($ticker) {
-        $endpoint = 'tickerinfo/';
+        $endpoint = 'tickerinfo';
         $params = [
             'access_key' => $this->api_key,
             'ticker' => strtoupper($ticker),
