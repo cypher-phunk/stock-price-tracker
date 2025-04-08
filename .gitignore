@@ -1,0 +1,22 @@
+# Ignore PHP-specific files
+*.log
+*.cache
+*.tmp
+*.swp
+
+# Ignore WordPress plugin build files
+/build/
+node_modules/
+vendor/
+
+# Ignore WordPress plugin trunk directory
+/trunk/
+
+# Ignore VSCode-specific files
+.vscode/
+*.code-workspace
+/vscode/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
