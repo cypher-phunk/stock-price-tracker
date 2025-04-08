@@ -431,6 +431,19 @@ function create_stock_post($symbol)
             update_field('industry', $company_info->industry, $post[0]->ID);
             update_field('website', $company_info->website, $post[0]->ID);
             update_field('about', $company_info->about, $post[0]->ID);
+            // Set category to sector
+            $sector = $company_info->sector;
+            $term = term_exists($sector, 'category');
+            if ($term) {
+                $term_id = $term['term_id'];
+            } else {
+                $term_id = wp_insert_term($sector, 'category');
+                if (is_wp_error($term_id)) {
+                    error_log('Error creating category: ' . $term_id->get_error_message());
+                    return;
+                }
+                $term_id = $term_id['term_id'];
+            }
         }
         return;
     }
@@ -451,8 +464,20 @@ function create_stock_post($symbol)
             update_field('website', $company_info->website, $post_id);
             update_field('about', $company_info->about, $post_id);
             update_field('ticker_id', $ticker_id, $post_id);
-        }
-        else {
+            // Set category to sector
+            $sector = $company_info->sector;
+            $term = term_exists($sector, 'category');
+            if ($term) {
+                $term_id = $term['term_id'];
+            } else {
+                $term_id = wp_insert_term($sector, 'category');
+                if (is_wp_error($term_id)) {
+                    error_log('Error creating category: ' . $term_id->get_error_message());
+                    return;
+                }
+                $term_id = $term_id['term_id'];
+            }
+        } else {
             error_log('ACF function not found');
         }
         $wpdb->update(
@@ -460,8 +485,7 @@ function create_stock_post($symbol)
             ['post_created' => 1],
             ['id' => $symbol->id]
         );
-    }
-    else {
+    } else {
         error_log('Error creating post: ' . $post_id->get_error_message());
     }
 }
@@ -493,3 +517,105 @@ function fetch_all_company_info_callback()
 
     wp_send_json_success();
 }
+
+function get_all_tracked_symbols() {
+    global $wpdb;
+    $table = $wpdb->prefix . 'stock_tickers';
+    return $wpdb->get_col("SELECT DISTINCT symbol FROM {$table}");
+}
+
+function build_stock_eod_transient() {
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'stock_prices';
+    $tracked_stocks = get_all_tracked_symbols();
+
+    $data = [];
+
+    foreach ($tracked_stocks as $symbol) {
+        // Get latest record for this symbol
+        $row = $wpdb->get_row($wpdb->prepare("
+            SELECT * FROM {$table}
+            WHERE symbol = %s
+            ORDER BY date DESC
+            LIMIT 1
+        ", $symbol));
+
+        if (!$row) continue; // No data for this ticker
+
+        // Get previous day’s close
+        $prev_close = $wpdb->get_var($wpdb->prepare("
+            SELECT close FROM {$table}
+            WHERE symbol = %s AND date < %s
+            ORDER BY date DESC
+            LIMIT 1
+        ", $symbol, $row->date));
+
+        $data[$symbol] = (object)[
+            'symbol'      => $symbol,
+            'date'        => $row->date,
+            'close'       => (float)$row->close,
+            'prev_close'  => $prev_close ? (float)$prev_close : null,
+        ];
+    }
+
+    set_transient('stock_eod_cache', $data, DAY_IN_SECONDS);
+}
+
+function display_stock_eod_info($ticker) {
+    $data = get_transient('stock_eod_cache');
+
+    if (!$data) {
+        return '<div style="color: red;">⚠️ Transient not found. Try rebuilding it.</div>';
+    }
+
+    if (!isset($data[$ticker])) {
+        return '<div style="color: orange;">⚠️ No EOD data found for <strong>' . esc_html($ticker) . '</strong>.</div><pre>' .
+            'Available tickers: <br>' .
+            implode(', ', array_map('htmlspecialchars', array_keys($data))) .
+            '</pre>';
+    }
+
+    $stock = $data[$ticker];
+    $price = number_format($stock->close, 2);
+    $date  = date('M j, Y', strtotime($stock->date));
+
+    $percent_change = '';
+    if ($stock->prev_close && $stock->prev_close > 0) {
+        $change = $stock->close - $stock->prev_close;
+        $percent = ($change / $stock->prev_close) * 100;
+        $percent_change = sprintf(' (<span style="color:%s">%+.2f%%</span>)',
+            $change >= 0 ? 'green' : 'red',
+            $percent
+        );
+    }
+
+    return "<strong>\${$price}{$percent_change}</strong><br><small>EOD Price Date: {$date}</small>";
+}
+
+
+add_shortcode('stock_eod', function($atts) {
+    $atts = shortcode_atts([
+        'ticker' => ''
+    ], $atts);
+
+    return display_stock_eod_info($atts['ticker']);
+});
+
+add_action('admin_init', function() {
+    if (isset($_GET['build_eod_transient'])) {
+        build_stock_eod_transient();
+        echo '<div style="padding:10px;background:#dff0d8;color:#3c763d;">✅ Transient rebuilt successfully!</div>';
+        exit;
+    }
+});
+
+add_action('admin_notices', function() {
+    $data = get_transient('stock_eod_cache');
+    if ($data) {
+        echo '<div style="background:#d9edf7;padding:10px;">✅ Transient is loaded with ' . count($data) . ' tickers.</div>';
+    } else {
+        echo '<div style="background:#f2dede;padding:10px;">❌ Still no transient.</div>';
+    }
+});
+
