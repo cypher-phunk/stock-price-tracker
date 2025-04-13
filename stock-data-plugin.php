@@ -2,24 +2,21 @@
 
 /**
  * Plugin Name: Stock Data Plugin
- * Description: Manages stock tickers and historical data using Marketstack API.
- * Version: 1.0.3
+ * Description: Stock Data Plugin for WordPress using MarketStack API.
+ * Version: 1.0.5
  * Author: RoDojo Web Development
  *
  */
 
-// Security: Prevent direct access
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SDP_PLUGIN_VERSION', '1.0.5'); // increment on schema change
+define('SDP_PLUGIN_VERSION', '1.0.5');
 
-// Define plugin constants
 define('SDP_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('SDP_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-// Activation hook for creating database tables
 register_activation_hook(__FILE__, 'sdp_create_db_tables');
 
 function sdp_create_db_tables()
@@ -89,18 +86,16 @@ function sdp_create_db_tables()
     dbDelta($sql_market_tickers);
     dbDelta($sql_stock_company_info);
 
-    // Update version after creating tables
     update_option('sdp_plugin_version', SDP_PLUGIN_VERSION);
 }
 
-// Include necessary files
 require_once(SDP_PLUGIN_PATH . 'includes/database-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/class-sdp-api.php');
 require_once(SDP_PLUGIN_PATH . 'includes/helpers.php');
 require_once(SDP_PLUGIN_PATH . 'includes/api-key-management.php');
 require_once(SDP_PLUGIN_PATH . 'includes/acf-hooks.php');
+require_once(SDP_PLUGIN_PATH . 'includes/sdp-cron.php');
 
-// Enqueue admin styles
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
 
@@ -147,15 +142,39 @@ function sdp_admin_page()
     require_once SDP_PLUGIN_PATH . 'includes/admin-settings-page.php';
 }
 
-// Schedule cron job on plugin activation
+// Cron for EOD Prices from stock_tickers
+add_action('sdp_daily_update', 'sdp_fetch_daily_stock_data');
+
+function sdp_fetch_daily_stock_data()
+{
+    sdp_update_stock_data();
+}
+
+
 register_activation_hook(__FILE__, 'sdp_schedule_cron');
 
 function sdp_schedule_cron()
 {
     if (!wp_next_scheduled('sdp_daily_update')) {
-        wp_schedule_event(strtotime('16:00:00'), 'daily', 'sdp_daily_update');
+        $timezone = new DateTimeZone('America/New_York');
+        $datetime = new DateTime('today 17:30:00', $timezone);
+
+        if ($datetime->getTimestamp() <= time()) {
+            $datetime->modify('+1 day');
+        }
+
+        wp_schedule_event($datetime->getTimestamp(), 'daily', 'sdp_daily_update');
     }
 }
+
+add_action('init', function() {
+    if (isset($_GET['trigger_stock_update']) && current_user_can('manage_options')) {
+        sdp_fetch_daily_stock_data();
+        echo "Stock data update triggered.";
+        exit;
+    }
+});
+
 
 // Clear scheduled cron job on deactivation
 register_deactivation_hook(__FILE__, 'sdp_clear_cron');
@@ -163,15 +182,6 @@ register_deactivation_hook(__FILE__, 'sdp_clear_cron');
 function sdp_clear_cron()
 {
     wp_clear_scheduled_hook('sdp_daily_update');
-}
-
-// Cron hook for daily update
-add_action('sdp_daily_update', 'sdp_fetch_daily_stock_data');
-
-function sdp_fetch_daily_stock_data()
-{
-    require_once(SDP_PLUGIN_PATH . 'includes/sdp-cron.php');
-    sdp_update_stock_data();
 }
 
 add_action('plugins_loaded', 'sdp_check_db_version');

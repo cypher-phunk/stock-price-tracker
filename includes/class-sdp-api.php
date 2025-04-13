@@ -21,6 +21,7 @@ class SDP_API_Handler {
      * @param string $date_to
      * @return array|WP_Error
      */
+    
     public function fetch_historical_data($ticker, $date_from, $date_to) {
         $endpoint = 'eod';
         $params = [
@@ -163,7 +164,7 @@ class SDP_API_Handler {
             return new WP_Error('api_error', 'Marketstack API error: ' . $body['error']['message']);
         }
 
-        return $body['data'];
+        return $body;
     }
 
     /**

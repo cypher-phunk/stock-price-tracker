@@ -17,6 +17,18 @@
  * @link     https://rodojo.dev/
  */
 ?>
+
+<?php
+error_log('Admin page loaded');
+
+if (isset($_GET['test_xdebug'])) {
+    error_log('Xdebug trigger block hit');
+    // Set your breakpoint here
+    $x = 1 + 1; // <- Break here
+    echo '<div style="padding: 10px; background: #efe; border: 1px solid #ccc;">Xdebug test triggered!</div>';
+}
+?>
+
 <script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/search.js'; ?>"></script>
 <script src="<?php echo plugin_dir_url(__FILE__) . '../assets/js/ticker-posts.js'; ?>"></script>
 <div class="wrap">
@@ -144,6 +156,99 @@
     </div>
 
     <h2>Manage Tickers</h2>
+
+    <form method="post">
+        <?php wp_nonce_field('test_cron_action', 'test_cron_nonce'); ?>
+        <p>Click the button below to test the cron job.</p>
+        <?php submit_button('Test Cron Job'); ?>
+    </form>
+    <?php
+    // Handle Test Cron Job
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_cron_nonce'])) {
+        if (wp_verify_nonce($_POST['test_cron_nonce'], 'test_cron_action')) {
+            if (function_exists('sdp_update_stock_data')) {
+                error_log('Calling sdp_update_stock_data');
+                sdp_update_stock_data(); // <- Put a breakpoint inside this function
+            } else {
+                error_log('Function not found: sdp_update_stock_data');
+            }
+        } else {
+            error_log('Nonce verification failed');
+        }
+    }
+    ?>
+    <form method="post">
+        <?php wp_nonce_field('fetch_missing_days_action', 'fetch_missing_days_nonce'); ?>
+        <p>Please select the date range to fetch missing days.</p>
+        <table class="form-table">
+            <tr>
+                <th scope="row">Date From</th>
+                <td>
+                    <input type="date" name="date_from" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" required>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Date To</th>
+                <td>
+                    <input type="date" name="date_to" value="<?php echo date('Y-m-d'); ?>" required>
+                </td>
+            </tr>
+        </table>
+        <p>Click the button below to fetch missing days.</p>
+        <?php submit_button('Fetch Missing Days'); ?>
+    </form>
+    <?php
+    // Handle Fetch Missing Days
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_missing_days_nonce'])) {
+        if (wp_verify_nonce($_POST['fetch_missing_days_nonce'], 'fetch_missing_days_action')) {
+            $date_from = sanitize_text_field($_POST['date_from']);
+            $date_to = sanitize_text_field($_POST['date_to']);
+
+            // Fetch missing days logic here
+            $date_from = isset($_POST['date_from']) ? date('Y-m-d', strtotime($_POST['date_from'])) : date('Y-m-d', strtotime('-999 days'));
+            $date_to   = isset($_POST['date_to']) ? date('Y-m-d', strtotime($_POST['date_to'])) : date('Y-m-d');
+
+            global $wpdb;
+            $tickers = $wpdb->get_results("SELECT id, symbol FROM {$wpdb->prefix}stock_tickers");
+
+            if (empty($tickers)) {
+                echo '<div class="error"><p>No tracked tickers found.</p></div>';
+            } else {
+                $api_handler = new SDP_API_Handler();
+
+                foreach ($tickers as $ticker) {
+                    $data = $api_handler->fetch_historical_data($ticker->symbol, $date_from, $date_to);
+
+                    if (is_wp_error($data)) {
+                        error_log("Error for {$ticker->symbol}: " . $data->get_error_message());
+                        continue;
+                    }
+
+                    foreach ($data as $stock_day) {
+                        $date = date('Y-m-d', strtotime($stock_day['date']));
+
+                        $existing_record = $wpdb->get_row(
+                            $wpdb->prepare(
+                                "SELECT id FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d AND date = %s",
+                                $ticker->id,
+                                $date
+                            )
+                        );
+
+                        if (!$existing_record || !update_existing_record($ticker->id, $stock_day, $date)) {
+                            new_record($stock_day, $ticker->id, $date);
+                        }
+
+                        error_log("Saved {$ticker->symbol} - $date");
+                    }
+                    sleep(.2);
+                }
+                // For example, you can call the API to fetch data for the specified date range
+                error_log("Fetching missing days from $date_from to $date_to");
+            }
+    }
+}
+    ?>
 
     <form method="post">
         <?php wp_nonce_field('add_ticker_action', 'add_ticker_nonce'); ?>
@@ -492,6 +597,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_pull_nonce'])) {
         }
     }
 }
+
 
 // Functions
 
