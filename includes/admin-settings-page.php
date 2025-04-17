@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Admin Settings Page for Stock Data Plugin
  *
@@ -95,14 +94,13 @@ if (isset($_GET['test_xdebug'])) {
 
             $api_handler = new SDP_API_Handler();
             $tickers = $api_handler->fetch_marketstack_tickers();
-
+          
             // Check for errors
             if (is_wp_error($tickers)) {
                 echo '<div class="error"><p>Error refreshing tickers: ' .
                     esc_html($tickers->get_error_message()) . '</p></div>';
                 return;
             }
-
             // Validate tickers
             if (empty($tickers)) {
                 echo '<div class="error"><p>No tickers were retrieved from Marketstack.</p></div>';
@@ -129,7 +127,7 @@ if (isset($_GET['test_xdebug'])) {
         }
     }
     ?>
-
+  
     <h3>Check & Add Tracked Tickers</h3>
     <textarea id="bulk-tickers" rows="3" placeholder="Enter symbols like: AAPL,TSLA,AI"></textarea>
     <br>
@@ -264,6 +262,7 @@ if (isset($_GET['test_xdebug'])) {
         </table>
 
         <?php submit_button('Add Tickers');
+
         ?>
     </form>
 
@@ -553,6 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['manual_pull_nonce']))
     }
 }
 
+
 // handle bulk data pull
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_pull_nonce'])) {
     if (wp_verify_nonce($_POST['bulk_pull_nonce'], 'bulk_pull_action')) {
@@ -597,7 +597,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_pull_nonce'])) {
         }
     }
 }
-
 
 // Functions
 

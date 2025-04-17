@@ -241,7 +241,7 @@ class SDP_API_Handler {
             'access_key' => $this->api_key,
             'ticker' => strtoupper($ticker),
         ];
-
+    
         $url = $this->base_url . $endpoint . '?' . http_build_query($params);
 
         $response = wp_remote_get($url);
