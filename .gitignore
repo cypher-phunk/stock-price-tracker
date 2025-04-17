@@ -13,9 +13,9 @@ vendor/
 /trunk/
 
 # Ignore VSCode-specific files
-.vscode/
 *.code-workspace
 /vscode/
+.vscode
 
 # Ignore OS-specific files
 .DS_Store
