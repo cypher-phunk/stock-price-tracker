@@ -39,3 +39,23 @@ function load_shortlist_tickers($field) {
 
     return $field;
 }
+
+add_filter('acf/format_value', function ($value, $post_id, $field) {
+    if ($field['name'] !== 'company_name_from_symbol') {
+        return $value;
+    }
+
+    // Get related post from 'acf_symbol'
+    $related = get_field('symbol', $post_id);
+
+    if ($related && is_array($related)) {
+        $related_post = $related[0];
+    } elseif ($related instanceof WP_Post) {
+        $related_post = $related;
+    } else {
+        return '';
+    }
+
+    // Get the company name from the related post
+    return get_field('company_name', $related_post->ID) ?: '';
+}, 10, 3);

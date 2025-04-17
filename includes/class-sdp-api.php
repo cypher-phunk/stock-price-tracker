@@ -21,6 +21,7 @@ class SDP_API_Handler {
      * @param string $date_to
      * @return array|WP_Error
      */
+    
     public function fetch_historical_data($ticker, $date_from, $date_to) {
         $endpoint = 'eod';
         $params = [
@@ -163,7 +164,7 @@ class SDP_API_Handler {
             return new WP_Error('api_error', 'Marketstack API error: ' . $body['error']['message']);
         }
 
-        return $body['data'];
+        return $body;
     }
 
     /**
@@ -224,5 +225,43 @@ class SDP_API_Handler {
         set_transient('sdp_marketstack_api_key_validation', $is_valid, WEEK_IN_SECONDS);
     
         return $is_valid;
+    }
+
+    /**
+     * 
+     * Fetch company information for a specific ticker
+     * 
+     * @param string $ticker
+     * @return array|WP_Error
+     * 
+     */
+    public function get_company_info($ticker) {
+        $endpoint = 'tickerinfo';
+        $params = [
+            'access_key' => $this->api_key,
+            'ticker' => strtoupper($ticker),
+        ];
+    
+        $url = $this->base_url . $endpoint . '?' . http_build_query($params);
+
+        $response = wp_remote_get($url);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+
+        if ($status_code !== 200) {
+            return new WP_Error('api_error', 'Marketstack API returned status code ' . $status_code);
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (isset($body['error'])) {
+            return new WP_Error('api_error', 'Marketstack API error: ' . $body['error']['message']);
+        }
+
+        return $body['data'];
     }
 }

@@ -1,5 +1,15 @@
 # MarketData Stock Price Tracker Wordpress Plugin
 
+## Optional Functionality
+We recommend that you disable the built-in wp cron and ensure that your cron job runs ontime.
+
+This will disable the built-in psuedo-cron system in wp-config.php
+define('DISABLE_WP_CRON', true);
+
+You should now run a command in your server to cron your site. For example:
+
+```*/5 * * * * wget https://example.com/wp-cron.php?doing_wp_cron```
+
 ## Overview
 
 The MarketData Stock Price Tracker is a WordPress plugin that allows users to manage stock tickers and view historical stock data using the Marketstack API. This plugin provides an admin interface for managing API keys, adding and viewing stock tickers, and fetching historical stock data.
@@ -46,21 +56,6 @@ The plugin schedules a daily cron job to fetch the latest stock data for all tic
 
 ## Development
 
-### File Structure
-README.md 
-stock-data-plugin.php
-assets/ 
-css/ 
-    |style.css 
-js/ 
-includes/ 
-    |admin-settings-page.php 
-    |api-key-management.php class-sdp-api.php
-    |database-handler.php 
-    |helpers.php 
-    |sdp-cron.php
-
-
 ### Key Files
 
 - `stock-data-plugin.php`: Main plugin file that initializes the plugin and registers hooks.
@@ -70,6 +65,30 @@ includes/
 - `includes/database-handler.php`: Class for handling database operations.
 - `includes/helpers.php`: Helper functions.
 - `includes/sdp-cron.php`: Functions for scheduling and executing cron jobs.
+
+## Structure
+```bash
+.
+├── assets
+│   ├── css
+│   │   └── style.css
+│   └── js
+│       ├── admin.js
+│       ├── search.js
+│       └── ticker-posts.js
+├── bricks-elements
+│   └── class-stock-performance-chart.php
+├── includes
+│   ├── acf-hooks.php
+│   ├── admin-settings-page.php
+│   ├── api-key-management.php
+│   ├── class-sdp-api.php
+│   ├── database-handler.php
+│   ├── helpers.php
+│   └── sdp-cron.php
+├── README.md
+└── stock-data-plugin.php
+```
 
 ## Author
 
