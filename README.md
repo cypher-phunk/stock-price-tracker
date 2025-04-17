@@ -66,6 +66,30 @@ The plugin schedules a daily cron job to fetch the latest stock data for all tic
 - `includes/helpers.php`: Helper functions.
 - `includes/sdp-cron.php`: Functions for scheduling and executing cron jobs.
 
+## Structure
+```bash
+.
+├── assets
+│   ├── css
+│   │   └── style.css
+│   └── js
+│       ├── admin.js
+│       ├── search.js
+│       └── ticker-posts.js
+├── bricks-elements
+│   └── class-stock-performance-chart.php
+├── includes
+│   ├── acf-hooks.php
+│   ├── admin-settings-page.php
+│   ├── api-key-management.php
+│   ├── class-sdp-api.php
+│   ├── database-handler.php
+│   ├── helpers.php
+│   └── sdp-cron.php
+├── README.md
+└── stock-data-plugin.php
+```
+
 ## Author
 
 RoDojo Web Development - [support@rodojo.dev](mailto:support@rodojo.dev)
