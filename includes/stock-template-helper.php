@@ -33,27 +33,35 @@ function sdp_inject_stock_information()
 
   <script>
     document.addEventListener("DOMContentLoaded", function() {
+      const processPlaceholders = () => {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
       while (walker.nextNode()) {
         const node = walker.currentNode;
+        console.log("Current node:", node.nodeValue);
         if (node.nodeValue.includes("{stock_price}")) {
           node.nodeValue = node.nodeValue.replace("{stock_price}", "<?= esc_js($formatted_price) ?>");
         }
         if (node.nodeValue.includes("{stock_percent_change}")) {
-          console.log("Replacing percent change text");
           const span = document.createElement("span");
           span.textContent = "<?= esc_js($formatted_change) ?>";
           span.style.color = <?= $row->percent_change >= 0 ? '"green"' : '"red"' ?>;
           node.parentNode.replaceChild(span, node);
+          // Add pass because we added span
+          processPlaceholders();
         }
         if (node.nodeValue.includes("{stock_last_updated}")) {
           console.log("Replacing last updated text");
-          const replacedText = node.nodeValue.replace("{stock_last_updated}", "<?= esc_js($timeAgo) ?>");
-          const newTextNode = document.createTextNode(replacedText);
-          node.parentNode.replaceChild(newTextNode, node);
+          console.log("Time ago:", "<?= esc_js($timeAgo) ?>");
+          node.nodeValue = node.nodeValue.replace("{stock_last_updated}", "<?= esc_js($timeAgo) ?>");
+          console.log("Replaced last updated text", node.nodeValue);
         }
       }
-    });
+    }
+
+      // Initial processing
+      processPlaceholders();
+      processPlaceholders();
+  });
   </script>
 
 <?php
