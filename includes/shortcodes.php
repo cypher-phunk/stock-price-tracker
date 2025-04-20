@@ -5,7 +5,7 @@ function sdp_register_shortcodes() {
   add_shortcode('stock_chart', 'sdp_render_stock_chart');
 }
 
-function sdp_render_stock_chart($atts) {
+function sdp_render_report_stock_chart($atts) {
   $post_id = get_the_ID();
   $report_date_raw = get_field('report_date', $post_id);
   if (!$report_date_raw) return '<p>Missing report date.</p>';
@@ -143,23 +143,132 @@ function sdp_render_stock_chart($atts) {
 
 // Chart for Single Stock Template
 // Different because no report date
-function sdp_render_report_stock_chart($atts) {
-  $atts = shortcode_atts([
-    'ticker_id' => '',
-], $atts);
+function sdp_render_stock_chart($atts) {
+    global $wpdb;
 
-if (!$atts['ticker_id']) return '';
+    $atts = shortcode_atts([
+        'symbol' => '',
+    ], $atts);
 
-global $wpdb;
-$table = "{$wpdb->prefix}stock_metrics";
-$row = $wpdb->get_row(
-    $wpdb->prepare("SELECT latest_close, percent_change FROM $table WHERE ticker_id = %d", $atts['ticker_id'])
-);
+    $symbol = strtoupper(trim($atts['symbol']));
+    if (!$symbol) return 'No stock symbol provided.';
 
-if (!$row) return 'Stock data not available.';
+    // Get ticker_id from symbol
+    $ticker_id = $wpdb->get_var($wpdb->prepare("
+        SELECT id FROM {$wpdb->prefix}stock_tickers
+        WHERE symbol = %s
+        LIMIT 1
+    ", $symbol));
 
-return "<div class='stock-metrics'>
-    <strong>Latest Close:</strong> {$row->latest_close}<br>
-    <strong>Change:</strong> {$row->percent_change}%
-</div>";
-}
+    if (!$ticker_id) return 'Invalid stock symbol.';
+
+    // Fetch metrics
+    $metrics = $wpdb->get_row($wpdb->prepare("
+        SELECT latest_close, percent_change FROM {$wpdb->prefix}stock_metrics
+        WHERE ticker_id = %d
+    ", $ticker_id));
+
+    // Fetch full chart data
+    $query = $wpdb->prepare(
+        "SELECT date, close FROM {$wpdb->prefix}stock_prices
+         WHERE ticker_id = %d
+         ORDER BY date ASC",
+        $ticker_id
+    );
+    $results = $wpdb->get_results($query);
+    if (!$results) return '<p>No price data found.</p>';
+  
+    $data_up = [];
+    $data_down = [];
+  
+    for ($i = 0; $i < count($results) - 1; $i++) {
+        $curr = $results[$i];
+        $next = $results[$i + 1];
+  
+        $curr_point = ['x' => $curr->date, 'y' => (float) $curr->close];
+        $next_point = ['x' => $next->date, 'y' => (float) $next->close];
+  
+        if ($next->close >= $curr->close) {
+            $data_up[] = $curr_point;
+            $data_up[] = $next_point;
+            $data_down[] = ['x' => $curr->date, 'y' => null];
+            $data_down[] = ['x' => $next->date, 'y' => null];
+        } elseif ($next->close < $curr->close) {
+            $data_down[] = $curr_point;
+            $data_down[] = $next_point;
+            $data_up[] = ['x' => $curr->date, 'y' => null];
+            $data_up[] = ['x' => $next->date, 'y' => null];
+        } else {
+            // No change — optional: skip or assign to both
+            $data_up[] = ['x' => $curr->date, 'y' => null];
+            $data_down[] = ['x' => $curr->date, 'y' => null];
+        }
+    }
+  
+  
+    $chart_id = 'stockChart_' . $ticker_id;
+  
+    ob_start(); ?>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <div id="<?php echo esc_attr($chart_id); ?>" style="min-height:350px;width:100%;margin:1em 0;"></div>
+    <script>
+        function waitForApexChart(callback) {
+            if (typeof ApexCharts !== 'undefined') {
+                callback();
+            } else {
+                setTimeout(() => waitForApexChart(callback), 50);
+            }
+        }
+  
+        waitForApexChart(() => {
+            const options = {
+                chart: {
+                    type: 'line',
+                    height: 350,
+                    zoom: {
+                        enabled: true,
+                        autoScaleYaxis: true
+                    },
+                    animations: {
+                        enabled: true,
+                        easing: 'linear',
+                        speed: 150,
+                        animateGradually: {
+                            enabled: false
+                        },
+                        dynamicAnimation: {
+                            enabled: false
+                        }
+                    },
+  
+                },
+                stroke: {
+                    width: 2,
+                    curve: 'smooth'
+                },
+                series: [{
+                        name: 'Up',
+                        data: <?php echo json_encode($data_up); ?>,
+                        color: '#00E396'
+                    },
+                    {
+                        name: 'Down',
+                        data: <?php echo json_encode($data_down); ?>,
+                        color: '#FF4560'
+                    }
+                ],
+  
+                xaxis: {
+                    type: 'datetime',
+                    min: new Date("<?php echo date('Y-m-d', strtotime('-30 days')); ?>").getTime(),
+                    max: new Date("<?php echo date('Y-m-d'); ?>").getTime()
+                },
+                colors: ['#00E396']
+            };
+  
+            new ApexCharts(document.querySelector("#<?php echo esc_attr($chart_id); ?>"), options).render();
+        });
+    </script>
+  <?php
+    return ob_get_clean();
+  }

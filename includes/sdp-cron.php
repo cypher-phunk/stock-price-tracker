@@ -41,3 +41,42 @@ function sdp_fetch_eod_for_ticker($ticker)
     }
     return $eod_data;
 }
+
+function sdp_update_stock_metrics() {
+    global $wpdb;
+    $prices_table = "{$wpdb->prefix}stock_prices";
+    $metrics_table = "{$wpdb->prefix}stock_metrics";
+
+    $ticker_ids = $wpdb->get_col("SELECT id FROM {$wpdb->prefix}stock_tickers");
+
+    foreach ($ticker_ids as $ticker_id) {
+        $rows = $wpdb->get_results($wpdb->prepare("
+            SELECT date, close FROM $prices_table
+            WHERE ticker_id = %d
+            ORDER BY date DESC
+            LIMIT 2
+        ", $ticker_id));
+
+        if (count($rows) === 2) {
+            $latest = $rows[0];
+            $previous = $rows[1];
+
+            if ($latest->date === $previous->date) {
+                continue; // Skip if the dates are the same
+            }
+            elseif (!$latest->close || !$previous->close || $previous->close == 0) {
+                continue; // Skip if the prices are the same
+            }
+            $percent_change = (($latest->close - $previous->close) / $previous->close) * 100;
+
+            $wpdb->replace($metrics_table, [
+                'ticker_id'       => $ticker_id,
+                'latest_date'     => $latest->date,
+                'latest_close'    => $latest->close,
+                'previous_close'  => $previous->close,
+                'percent_change'  => round($percent_change, 2),
+                'updated_at'      => current_time('mysql'),
+            ]);
+        }
+    }
+}

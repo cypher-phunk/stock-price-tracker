@@ -81,10 +81,22 @@ function sdp_create_db_tables()
         FOREIGN KEY (ticker_id) REFERENCES {$wpdb->prefix}stock_tickers(id)
     ) $charset_collate;";
 
+    $sql_metrics = "CREATE TABLE {$wpdb->prefix}stock_metrics (
+    ticker_id INT(11) NOT NULL,
+    latest_date DATE NOT NULL,
+    latest_close DECIMAL(10,4) NOT NULL,
+    previous_close DECIMAL(10,4) NOT NULL,
+    percent_change DECIMAL(6,2) NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ticker_id),
+    FOREIGN KEY (ticker_id) REFERENCES {$wpdb->prefix}stock_tickers(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB $charset_collate;";
+
     dbDelta($sql_tickers);
     dbDelta($sql_prices);
     dbDelta($sql_market_tickers);
     dbDelta($sql_stock_company_info);
+    dbDelta($sql_metrics);
 
     update_option('sdp_plugin_version', SDP_PLUGIN_VERSION);
 }
@@ -96,6 +108,7 @@ require_once(SDP_PLUGIN_PATH . 'includes/api-key-management.php');
 require_once(SDP_PLUGIN_PATH . 'includes/acf-hooks.php');
 require_once(SDP_PLUGIN_PATH . 'includes/sdp-cron.php');
 require_once(SDP_PLUGIN_PATH . 'includes/shortcodes.php');
+require_once(SDP_PLUGIN_PATH . 'includes/stock-template-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -151,24 +164,32 @@ function sdp_fetch_daily_stock_data()
     sdp_update_stock_data();
 }
 
+add_action('sdp_update_stock_metrics', 'update_stock_metrics');
+function update_stock_metrics()
+{
+    sdp_update_stock_metrics();
+}
 
 register_activation_hook(__FILE__, 'sdp_schedule_cron');
 
 function sdp_schedule_cron()
 {
+    $timezone = new DateTimeZone('America/New_York');
+    $datetime = new DateTime('today 17:30:00', $timezone);
+
+    if ($datetime->getTimestamp() <= time()) {
+        $datetime->modify('+1 day');
+    }
     if (!wp_next_scheduled('sdp_daily_update')) {
-        $timezone = new DateTimeZone('America/New_York');
-        $datetime = new DateTime('today 17:30:00', $timezone);
-
-        if ($datetime->getTimestamp() <= time()) {
-            $datetime->modify('+1 day');
-        }
-
         wp_schedule_event($datetime->getTimestamp(), 'daily', 'sdp_daily_update');
+    }
+    if (!wp_next_scheduled('sdp_update_stock_metrics')){
+        $datetime->modify('+5 minutes');
+        wp_schedule_event($datetime->getTimestamp(), 'daily', 'sdp_update_stock_metrics');
     }
 }
 
-add_action('init', function() {
+add_action('init', function () {
     if (isset($_GET['trigger_stock_update']) && current_user_can('manage_options')) {
         sdp_fetch_daily_stock_data();
         echo "Stock data update triggered.";
@@ -183,6 +204,7 @@ register_deactivation_hook(__FILE__, 'sdp_clear_cron');
 function sdp_clear_cron()
 {
     wp_clear_scheduled_hook('sdp_daily_update');
+    wp_clear_scheduled_hook('sdp_update_stock_metrics');
 }
 
 add_action('plugins_loaded', 'sdp_check_db_version');
@@ -620,9 +642,17 @@ add_shortcode('stock_eod', function ($atts) {
 add_action('init', 'sdp_register_shortcodes');
 
 add_action('admin_init', function () {
+    if (!is_admin() || !current_user_can('manage_options')) return;
+
     if (isset($_GET['build_eod_transient'])) {
         build_stock_eod_transient();
         echo '<div style="padding:10px;background:#dff0d8;color:#3c763d;">✅ Transient rebuilt successfully!</div>';
+        exit;
+    }
+    
+    if (isset($_GET['run_metrics_update'])) {
+        sdp_update_stock_metrics();
+        echo '<div class="notice notice-success is-dismissible"><p>Stock metrics updated successfully.</p></div>';
         exit;
     }
 });
@@ -635,4 +665,3 @@ add_action('admin_notices', function () {
         echo '<div style="background:#f2dede;padding:10px;">❌ Still no transient.</div>';
     }
 });
-

@@ -15,7 +15,7 @@ vendor/
 # Ignore VSCode-specific files
 *.code-workspace
 /vscode/
-.vscode
+.vscode/
 
 # Ignore OS-specific files
 .DS_Store
