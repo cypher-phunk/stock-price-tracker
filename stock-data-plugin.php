@@ -701,7 +701,7 @@ add_action('admin_notices', function () {
 add_action('wp_enqueue_scripts', 'sdp_enqueue_gridjs_assets');
 function sdp_enqueue_gridjs_assets()
 {
-    if (!is_post_type_archive('report')) return;
+    if (!is_post_type_archive('report') && !is_front_page()) return;
 
     wp_enqueue_script('gridjs', 'https://unpkg.com/gridjs/dist/gridjs.umd.js', [], null, true);
     wp_enqueue_style('gridjs-style', 'https://unpkg.com/gridjs/dist/theme/mermaid.min.css');

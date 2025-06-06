@@ -40,7 +40,8 @@ function sdp_update_report_post_fields($post_id)
 function sdp_localize_report_data()
 {
   $in_reports = is_post_type_archive('report');
-  if (!$in_reports) return;
+  $is_home = is_front_page();
+  if (!$in_reports && !$is_home) return;
 
   // Query report posts
   $reports = get_posts([
