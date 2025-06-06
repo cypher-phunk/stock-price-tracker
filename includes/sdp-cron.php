@@ -4,6 +4,19 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+function sdp_cron_log($message) {
+    $log_dir = __DIR__ . '/logs';
+    $log_file = $log_dir . '/cron.log';
+
+    // Create the logs directory if it doesn't exist
+    if (!file_exists($log_dir)) {
+        mkdir($log_dir, 0755, true); // true = recursive
+    }
+
+    $timestamp = date('[Y-m-d H:i:s]');
+    file_put_contents($log_file, "$timestamp $message\n", FILE_APPEND);
+}
+
 function sdp_update_stock_data()
 {
     global $wpdb;
