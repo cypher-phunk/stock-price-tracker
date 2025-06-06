@@ -705,6 +705,5 @@ function sdp_enqueue_gridjs_assets()
 
     wp_enqueue_script('gridjs', 'https://unpkg.com/gridjs/dist/gridjs.umd.js', [], null, true);
     wp_enqueue_style('gridjs-style', 'https://unpkg.com/gridjs/dist/theme/mermaid.min.css');
-    
 }
 add_action('wp_enqueue_scripts', 'sdp_localize_report_data');
