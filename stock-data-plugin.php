@@ -103,12 +103,15 @@ function sdp_create_db_tables()
 
 require_once(SDP_PLUGIN_PATH . 'includes/database-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/class-sdp-api.php');
-require_once(SDP_PLUGIN_PATH . 'includes/helpers.php');
+require_once(SDP_PLUGIN_PATH . 'includes/log-helpers.php');
 require_once(SDP_PLUGIN_PATH . 'includes/api-key-management.php');
 require_once(SDP_PLUGIN_PATH . 'includes/acf-hooks.php');
 require_once(SDP_PLUGIN_PATH . 'includes/sdp-cron.php');
 require_once(SDP_PLUGIN_PATH . 'includes/shortcodes.php');
 require_once(SDP_PLUGIN_PATH . 'includes/stock-template-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/cpt-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/db-helpers.php');
+require_once(SDP_PLUGIN_PATH . 'includes/reports-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -161,6 +164,7 @@ add_action('sdp_daily_update', 'sdp_fetch_daily_stock_data');
 
 function sdp_fetch_daily_stock_data()
 {
+    sdp_cron_log("✅ sdp_daily_update cron fired.");
     sdp_update_stock_data();
 }
 
@@ -172,22 +176,49 @@ function update_stock_metrics()
 
 register_activation_hook(__FILE__, 'sdp_schedule_cron');
 
+function sdp_update_all_report_fields()
+{
+    $reports = get_posts([
+        'post_type' => 'report',
+        'post_status' => 'publish',
+        'numberposts' => -1
+    ]);
+
+    foreach ($reports as $report) {
+        sdp_update_report_post_fields($report->ID);
+    }
+}
+
+// Cron hook
+add_action('sdp_update_report_fields_cron', 'sdp_update_all_report_fields');
+
 function sdp_schedule_cron()
 {
     $timezone = new DateTimeZone('America/New_York');
-    $datetime = new DateTime('today 17:30:00', $timezone);
+    $now = time();
 
-    if ($datetime->getTimestamp() <= time()) {
-        $datetime->modify('+1 day');
+    $base_time = new DateTime('today 17:30:00', $timezone);
+    if ($base_time->getTimestamp() <= $now) {
+        $base_time->modify('+1 day');
     }
+
     if (!wp_next_scheduled('sdp_daily_update')) {
-        wp_schedule_event($datetime->getTimestamp(), 'daily', 'sdp_daily_update');
+        wp_schedule_event($base_time->getTimestamp(), 'daily', 'sdp_daily_update');
     }
-    if (!wp_next_scheduled('sdp_update_stock_metrics')){
-        $datetime->modify('+5 minutes');
-        wp_schedule_event($datetime->getTimestamp(), 'daily', 'sdp_update_stock_metrics');
+
+    if (!wp_next_scheduled('sdp_update_stock_metrics')) {
+        $stock_time = clone $base_time;
+        $stock_time->modify('+5 minutes');
+        wp_schedule_event($stock_time->getTimestamp(), 'daily', 'sdp_update_stock_metrics');
+    }
+
+    if (!wp_next_scheduled('sdp_update_report_fields_cron')) {
+        $report_time = clone $base_time;
+        $report_time->modify('+10 minutes');
+        wp_schedule_event($report_time->getTimestamp(), 'daily', 'sdp_update_report_fields_cron');
     }
 }
+
 
 add_action('init', function () {
     if (isset($_GET['trigger_stock_update']) && current_user_can('manage_options')) {
@@ -665,3 +696,15 @@ add_action('admin_notices', function () {
         echo '<div style="background:#f2dede;padding:10px;">❌ Still no transient.</div>';
     }
 });
+
+// Report Page Grid.js pkgs
+add_action('wp_enqueue_scripts', 'sdp_enqueue_gridjs_assets');
+function sdp_enqueue_gridjs_assets()
+{
+    if (!is_post_type_archive('report') && !is_front_page()) return;
+
+    wp_enqueue_script('gridjs', 'https://unpkg.com/gridjs/dist/gridjs.umd.js', [], null, true);
+    wp_enqueue_style('gridjs-style', 'https://unpkg.com/gridjs/dist/theme/mermaid.min.css');
+    
+}
+add_action('wp_enqueue_scripts', 'sdp_localize_report_data');
