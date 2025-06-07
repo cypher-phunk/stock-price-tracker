@@ -21,6 +21,74 @@ class SDP_API_Handler {
      * @param string $date_to
      * @return array|WP_Error
      */
+
+    public function fetch_all_historical_data($ticker) {
+        $endpoint = 'eod';
+        $params = [
+            'access_key' => $this->api_key,
+            'symbols' => strtoupper($ticker),
+            'limit' => 1000
+        ];
+
+        $url = $this->base_url . $endpoint . '?' . http_build_query($params);
+
+        $response = wp_remote_get($url);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+
+        if ($status_code !== 200) {
+            return new WP_Error('api_error', 'Marketstack API returned status code ' . $status_code);
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        if (isset($body['error'])) {
+            return new WP_Error('api_error', 'Marketstack API error: ' . $body['error']['message']);
+        }
+
+        // loop until we get all eods based on total count
+        $all_data = [];
+        $total_count = $body['pagination']['total'];
+        $current_count = count($body['data']);
+        $all_data = array_merge($all_data, $body['data']);
+        $offset = 0;
+        while ($current_count < $total_count) {
+            $offset += 1000; // Increment offset by the limit
+            $params['offset'] = $offset;
+            $url = $this->base_url . $endpoint . '?' . http_build_query($params);
+
+            $response = wp_remote_get($url);
+
+            if (is_wp_error($response)) {
+                return $response;
+            }
+
+            $status_code = wp_remote_retrieve_response_code($response);
+
+            if ($status_code !== 200) {
+                return new WP_Error('api_error', 'Marketstack API returned status code ' . $status_code);
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+
+            if (isset($body['error'])) {
+                return new WP_Error('api_error', 'Marketstack API error: ' . $body['error']['message']);
+            }
+
+            $all_data = array_merge($all_data, $body['data']);
+            $current_count += count($body['data']);
+        }
+        // Return all data
+        if (empty($all_data)) {
+            return new WP_Error('api_error', 'No historical data found for ticker: ' . $ticker);
+        }
+
+        return $all_data;
+    }
     
     public function fetch_historical_data($ticker, $date_from, $date_to) {
         $endpoint = 'eod';

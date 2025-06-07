@@ -150,7 +150,7 @@ if (isset($_GET['test_xdebug'])) {
 
     <div>
         <!-- Add all ticker posts here -->
-        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add Ticker Posts***</button>
+        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALLTicker Posts***</button>
     </div>
 
     <h2>Manage Tickers</h2>

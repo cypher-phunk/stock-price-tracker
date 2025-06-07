@@ -410,7 +410,9 @@ function add_stock_tickers_callback()
             $wpdb->insert($table, ['symbol' => $symbol]);
             $added[] = $symbol;
         }
-        grab_company_info($symbol); // Fetch company info
+        grab_company_info($symbol);
+        create_stock_post($symbol);
+        create_stock_historical_data($symbol);
     }
 
     wp_send_json_success(['added' => $added]);
@@ -554,6 +556,38 @@ function create_stock_post($symbol)
     }
 }
 
+function create_stock_historical_data($ticker_id)
+{
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'stock_historical_data';
+    $api = new SDP_API_Handler();
+    $historical_data = $api->fetch_all_historical_data($ticker_id);
+
+    if (is_wp_error($historical_data)) {
+        error_log('Error fetching historical data for ticker ID: ' . $ticker_id);
+        return;
+    }
+
+    foreach ($historical_data as $data) {
+        // log to console successful days 
+        error_log('Successfully processed date: ' . date('Y-m-d', strtotime($data['date'])));
+        $date = date('Y-m-d', strtotime($data['date']));
+
+        // Check if the record already exists
+        $existing_record = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d AND date = %s",
+                $ticker_id,
+                $date
+            )
+        );
+        if (!$existing_record || !update_existing_record($ticker_id, $data, $date)) {
+            new_record($data, $ticker_id, $date);
+        }
+    }
+}
+
 add_action('wp_ajax_grab_company_info', 'grab_company_info_callback');
 function grab_company_info_callback()
 {
@@ -562,6 +596,7 @@ function grab_company_info_callback()
 
     grab_company_info($symbol);
     create_stock_post($symbol);
+    create_stock_historical_data($symbol);
 
     wp_send_json_success();
 }
@@ -680,7 +715,7 @@ add_action('admin_init', function () {
         echo '<div style="padding:10px;background:#dff0d8;color:#3c763d;">✅ Transient rebuilt successfully!</div>';
         exit;
     }
-    
+
     if (isset($_GET['run_metrics_update'])) {
         sdp_update_stock_metrics();
         echo '<div class="notice notice-success is-dismissible"><p>Stock metrics updated successfully.</p></div>';
@@ -705,6 +740,5 @@ function sdp_enqueue_gridjs_assets()
 
     wp_enqueue_script('gridjs', 'https://unpkg.com/gridjs/dist/gridjs.umd.js', [], null, true);
     wp_enqueue_style('gridjs-style', 'https://unpkg.com/gridjs/dist/theme/mermaid.min.css');
-    
 }
 add_action('wp_enqueue_scripts', 'sdp_localize_report_data');
