@@ -4,7 +4,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-function sdp_cron_log($message) {
+function sdp_cron_log($message)
+{
     $log_dir = __DIR__ . '/logs';
     $log_file = $log_dir . '/cron.log';
 
@@ -55,7 +56,8 @@ function sdp_fetch_eod_for_ticker($ticker)
     return $eod_data;
 }
 
-function sdp_update_stock_metrics() {
+function sdp_update_stock_metrics()
+{
     global $wpdb;
     $prices_table = "{$wpdb->prefix}stock_prices";
     $metrics_table = "{$wpdb->prefix}stock_metrics";
@@ -76,8 +78,7 @@ function sdp_update_stock_metrics() {
 
             if ($latest->date === $previous->date) {
                 continue; // Skip if the dates are the same
-            }
-            elseif (!$latest->close || !$previous->close || $previous->close == 0) {
+            } elseif (!$latest->close || !$previous->close || $previous->close == 0) {
                 continue; // Skip if the prices are the same
             }
             $percent_change = (($latest->close - $previous->close) / $previous->close) * 100;
@@ -91,5 +92,45 @@ function sdp_update_stock_metrics() {
                 'updated_at'      => current_time('mysql'),
             ]);
         }
+    }
+}
+
+function sdp_update_stock_metric($ticker)
+{
+    global $wpdb;
+    $prices_table = "{$wpdb->prefix}stock_prices";
+    $metrics_table = "{$wpdb->prefix}stock_metrics";
+
+    $ticker_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s", $ticker));
+    if (!$ticker_id) {
+        return; // Ticker not found
+    }
+
+    $rows = $wpdb->get_results($wpdb->prepare("
+            SELECT date, close FROM $prices_table
+            WHERE ticker_id = %d
+            ORDER BY date DESC
+            LIMIT 2
+        ", $ticker_id));
+
+    if (count($rows) === 2) {
+        $latest = $rows[0];
+        $previous = $rows[1];
+
+        if ($latest->date === $previous->date) {
+            return; // Skip if the dates are the same
+        } elseif (!$latest->close || !$previous->close || $previous->close == 0) {
+            return; // Skip if the prices are the same
+        }
+        $percent_change = (($latest->close - $previous->close) / $previous->close) * 100;
+
+        $wpdb->replace($metrics_table, [
+            'ticker_id'       => $ticker_id,
+            'latest_date'     => $latest->date,
+            'latest_close'    => $latest->close,
+            'previous_close'  => $previous->close,
+            'percent_change'  => round($percent_change, 2),
+            'updated_at'      => current_time('mysql'),
+        ]);
     }
 }

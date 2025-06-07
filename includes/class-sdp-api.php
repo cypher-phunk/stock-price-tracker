@@ -22,7 +22,13 @@ class SDP_API_Handler {
      * @return array|WP_Error
      */
 
-    public function fetch_all_historical_data($ticker) {
+    public function fetch_all_historical_data($ticker_id) {
+        // get ticker symbol from the database
+        global $wpdb;
+        $ticker = $wpdb->get_var($wpdb->prepare("SELECT symbol FROM {$wpdb->prefix}stock_tickers WHERE id = %d", $ticker_id));
+        if (is_wp_error($ticker) || empty($ticker)) {
+            return new WP_Error('api_error', 'Invalid ticker ID or ticker not found');
+        }
         $endpoint = 'eod';
         $params = [
             'access_key' => $this->api_key,
@@ -52,7 +58,9 @@ class SDP_API_Handler {
 
         // loop until we get all eods based on total count
         $all_data = [];
-        $total_count = $body['pagination']['total'];
+        $total_count = 2000;
+        // $total = $body['pagination']['total'];
+        // API not working right now, so we will use a fixed total count
         $current_count = count($body['data']);
         $all_data = array_merge($all_data, $body['data']);
         $offset = 0;
