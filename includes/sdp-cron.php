@@ -4,6 +4,9 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Includes necessary files
+require_once __DIR__ . '/db-helpers.php';
+
 function sdp_cron_log($message)
 {
     $log_dir = __DIR__ . '/logs';
@@ -39,8 +42,8 @@ function sdp_update_stock_data()
             )
         );
 
-        if (!$existing_record || !update_existing_record($ticker->id, $eod_data, $date)) {
-            new_record($eod_data, $ticker->id, $date);
+        if (!$existing_record || !sdp_update_existing_record($ticker->id, $eod_data, $date)) {
+            sdp_new_record($eod_data, $ticker->id, $date);
         }
         sleep(.2);
     }

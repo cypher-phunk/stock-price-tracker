@@ -112,6 +112,9 @@ require_once(SDP_PLUGIN_PATH . 'includes/stock-template-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/cpt-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/db-helpers.php');
 require_once(SDP_PLUGIN_PATH . 'includes/reports-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/class-sdp-api.php');
+require_once(SDP_PLUGIN_PATH . 'includes/tmdb-api-handler.php');
+require_once(SDP_PLUGIN_PATH . 'includes/tmdb-movie-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -557,109 +560,10 @@ function create_stock_post($symbol)
     }
 }
 
-function new_record_main($stock_day, $ticker_id, $date)
-{
-    global $wpdb;
-    $wpdb->insert(
-        "{$wpdb->prefix}stock_prices",
-        [
-            'ticker_id' => $ticker_id,
-            'date' => $date,
-            'open' => $stock_day['open'],
-            'high' => $stock_day['high'],
-            'low' => $stock_day['low'],
-            'close' => $stock_day['close'],
-            'volume' => $stock_day['volume'],
-            'adj_open' => $stock_day['adj_open'],
-            'adj_high' => $stock_day['adj_high'],
-            'adj_low' => $stock_day['adj_low'],
-            'adj_close' => $stock_day['adj_close'],
-            'adj_volume' => $stock_day['adj_volume'],
-            'split_factor' => $stock_day['split_factor'],
-            'dividend' => $stock_day['dividend'],
-            'symbol' => $stock_day['symbol'],
-            'exchange' => $stock_day['exchange'],
-        ],
-        [
-            '%d',
-            '%s',
-            '%f',
-            '%f',
-            '%f',
-            '%f',
-            '%d',
-            '%f',
-            '%f',
-            '%f',
-            '%f',
-            '%d',
-            '%f',
-            '%s',
-            '%s'
-        ]
-    );
-}
-
-function update_existing_record_main($ticker_id, $stock_day, $date)
-{
-    global $wpdb;
-    // Update existing record
-    try {
-        $wpdb->update(
-            "{$wpdb->prefix}stock_prices",
-            [
-                'open' => $stock_day['open'],
-                'high' => $stock_day['high'],
-                'low' => $stock_day['low'],
-                'close' => $stock_day['close'],
-                'volume' => $stock_day['volume'],
-                'adj_open' => $stock_day['adj_open'],
-                'adj_high' => $stock_day['adj_high'],
-                'adj_low' => $stock_day['adj_low'],
-                'adj_close' => $stock_day['adj_close'],
-                'adj_volume' => $stock_day['adj_volume'],
-                'split_factor' => $stock_day['split_factor'],
-                'dividend' => $stock_day['dividend'],
-                'symbol' => $stock_day['symbol'],
-                'exchange' => $stock_day['exchange'],
-            ],
-            [
-                'ticker_id' => $ticker_id,
-                'date' => $date,
-            ],
-            [
-                '%f',
-                '%f',
-                '%f',
-                '%f',
-                '%d',
-                '%f',
-                '%f',
-                '%f',
-                '%f',
-                '%d',
-                '%f',
-                '%f',
-                '%s',
-                '%s'
-            ],
-            [
-                '%d',
-                '%s'
-            ]
-        );
-        return True;
-    } catch (Exception $e) {
-        error_log('Stock Data Plugin Error: ' . $e->getMessage());
-        return False;
-    }
-}
-
 function create_stock_historical_data($ticker)
 {
     global $wpdb;
 
-    $table = $wpdb->prefix . 'stock_historical_data';
     $api = new SDP_API_Handler();
     $ticker_id = $wpdb->get_var($wpdb->prepare(
         "SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s",
@@ -685,8 +589,8 @@ function create_stock_historical_data($ticker)
                 $date
             )
         );
-        if (!$existing_record || !update_existing_record_main($ticker_id, $data, $date)) {
-            new_record_main($data, $ticker_id, $date);
+        if (!$existing_record || !sdp_update_existing_record($ticker_id, $data, $date)) {
+            sdp_new_record($data, $ticker_id, $date);
         }
     }
 }

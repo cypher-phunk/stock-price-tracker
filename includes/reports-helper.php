@@ -91,3 +91,54 @@ function sdp_localize_report_data()
     'rows' => $data
   ]);
 }
+
+function update_report_title_and_slug($post_id) {
+    if (get_post_type($post_id) !== 'report') return;
+
+    $research_company = get_field('research_company', $post_id);
+    $symbol = get_field('symbol', $post_id);
+    $report_date = get_field('report_date', $post_id);
+
+    if (empty($research_company) || empty($symbol) || empty($report_date)) return;
+
+    // Handle relationship vs post object fields
+    $symbol_post = is_array($symbol) ? $symbol[0] : $symbol;
+    $firm_post   = is_array($research_company) ? $research_company[0] : $research_company;
+
+    $firm_name  = get_the_title($firm_post);
+    $stock_name = get_the_title($symbol_post);
+
+    // Normalize date format (handles slashes or dashes)
+    $date = date_parse_from_format('m/d/Y', $report_date);
+    if (!$date) return; // Skip if date is invalid
+
+    $date_title = sprintf(
+        '%02d/%02d/%04d',
+        $date['month'],
+        $date['day'],
+        $date['year']
+    );
+
+    $date_slug = sprintf(
+        '%02d-%02d-%04d',
+        $date['month'],
+        $date['day'],
+        $date['year']
+    );
+
+    $new_title = "{$firm_name} Report on {$stock_name} | {$date_title}";
+    $new_slug  = sanitize_title("{$stock_name}-{$firm_name}-{$date_slug}");
+
+    $post = get_post($post_id);
+
+    if ($post->post_title !== $new_title || $post->post_name !== $new_slug) {
+        wp_update_post([
+            'ID'         => $post_id,
+            'post_title' => $new_title,
+            'post_name'  => $new_slug,
+        ]);
+    }
+}
+
+add_action('acf/save_post', 'update_report_title_and_slug', 20);
+add_action('pmxi_saved_post', 'update_report_title_and_slug', 20, 1);

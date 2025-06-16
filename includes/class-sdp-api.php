@@ -66,6 +66,9 @@ class SDP_API_Handler {
         $offset = 0;
         while ($current_count < $total_count) {
             $offset += 1000; // Increment offset by the limit
+            if ($offset > $current_count) {
+                break; // Stop if the returned count is not enough
+            }
             $params['offset'] = $offset;
             $url = $this->base_url . $endpoint . '?' . http_build_query($params);
 

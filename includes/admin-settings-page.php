@@ -18,6 +18,13 @@
 ?>
 
 <?php
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly
+}
+// Include necessary files
+require_once plugin_dir_path(__FILE__) . 'db-helpers.php';
+require_once plugin_dir_path(__FILE__) . 'tmdb-movie-helper.php';
+
 error_log('Admin page loaded');
 
 if (isset($_GET['test_xdebug'])) {
@@ -66,6 +73,42 @@ if (isset($_GET['test_xdebug'])) {
             } else {
                 add_settings_error('sdp_messages', 'sdp_message', 'Invalid API Key', 'error');
             }
+        }
+    }
+    ?>
+
+    <!-- TMDB API Key Settings -->
+    <form method="post" action="">
+        <?php wp_nonce_field('sdp_save_tmdb_api_key', 'sdp_tmdb_api_key_nonce'); ?>
+        <input type="hidden" name="action" value="save_api_key" />
+        <p class="description">Make sure to save your API key before using the TMDB features.</p>
+        <table class="form-table">
+            <tr valign="top">
+                <th scope="row">TMDB API Key</th>
+                <td>
+                    <?php
+                    $tmdb_api_key = sdp_get_tmdb_api_key();
+                    $display_key = '';
+                    if (!empty($tmdb_api_key)) {
+                        $display_key = substr($tmdb_api_key, 0, 4) . str_repeat('*', max(0, strlen($tmdb_api_key) - 4));
+                    }
+                    ?>
+                    <input type="text" name="sdp_tmdb_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
+                    <p class="description">Your API key from <a href="https://www.themoviedb.org/documentation/api" target="_blank">TMDB</a>. Keep this key secure.</p>
+                </td>
+            </tr>
+        </table>
+        <?php submit_button('Save API Key'); ?>
+    </form>
+
+    <?php
+    // Handle TMDB API Key submission
+    if (isset($_POST['sdp_tmdb_api_key_nonce']) && wp_verify_nonce($_POST['sdp_tmdb_api_key_nonce'], 'sdp_save_tmdb_api_key')) {
+        $tmdb_api_key = sanitize_text_field($_POST['sdp_tmdb_api_key']);
+        if (sdp_save_tmdb_api_key($tmdb_api_key)) {
+            echo '<div class="updated"><p>TMDB API Key saved successfully.</p></div>';
+        } else {
+            echo '<div class="error"><p>Failed to save TMDB API Key.</p></div>';
         }
     }
     ?>
@@ -233,8 +276,8 @@ if (isset($_GET['test_xdebug'])) {
                             )
                         );
 
-                        if (!$existing_record || !update_existing_record($ticker->id, $stock_day, $date)) {
-                            new_record($stock_day, $ticker->id, $date);
+                        if (!$existing_record || !sdp_update_existing_record($ticker->id, $stock_day, $date)) {
+                            sdp_new_record($stock_day, $ticker->id, $date);
                         }
 
                         error_log("Saved {$ticker->symbol} - $date");
@@ -543,8 +586,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['manual_pull_nonce']))
                         $date
                     )
                 );
-                if (!$existing_record || !update_existing_record($ticker_id, $stock_day, $date)) {
-                    new_record($stock_day, $ticker_id, $date);
+                if (!$existing_record || !sdp_update_existing_record($ticker_id, $stock_day, $date)) {
+                    sdp_new_record($stock_day, $ticker_id, $date);
                 }
             }
             echo '<div class="updated"><p>Historical data successfully fetched and saved.</p></div>';
@@ -585,8 +628,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_pull_nonce'])) {
                         )
                     );
 
-                    if (!$existing_record || !update_existing_record($ticker->id, $stock_day, $date)) {
-                        new_record($stock_day, $ticker->id, $date);
+                    if (!$existing_record || !sdp_update_existing_record($ticker->id, $stock_day, $date)) {
+                        sdp_new_record($stock_day, $ticker->id, $date);
                     }
 
                     error_log("Saved {$ticker->symbol} - $date");
@@ -636,102 +679,4 @@ function suggest_marketstack_tickers()
     }
 }
 
-// Check if record already exists
-function update_existing_record($ticker_id, $stock_day, $date)
-{
-    global $wpdb;
-    // Update existing record
-    try {
-        $wpdb->update(
-            "{$wpdb->prefix}stock_prices",
-            [
-                'open' => $stock_day['open'],
-                'high' => $stock_day['high'],
-                'low' => $stock_day['low'],
-                'close' => $stock_day['close'],
-                'volume' => $stock_day['volume'],
-                'adj_open' => $stock_day['adj_open'],
-                'adj_high' => $stock_day['adj_high'],
-                'adj_low' => $stock_day['adj_low'],
-                'adj_close' => $stock_day['adj_close'],
-                'adj_volume' => $stock_day['adj_volume'],
-                'split_factor' => $stock_day['split_factor'],
-                'dividend' => $stock_day['dividend'],
-                'symbol' => $stock_day['symbol'],
-                'exchange' => $stock_day['exchange'],
-            ],
-            [
-                'ticker_id' => $ticker_id,
-                'date' => $date,
-            ],
-            [
-                '%f',
-                '%f',
-                '%f',
-                '%f',
-                '%d',
-                '%f',
-                '%f',
-                '%f',
-                '%f',
-                '%d',
-                '%f',
-                '%f',
-                '%s',
-                '%s'
-            ],
-            [
-                '%d',
-                '%s'
-            ]
-        );
-        return True;
-    } catch (Exception $e) {
-        error_log('Stock Data Plugin Error: ' . $e->getMessage());
-        return False;
-    }
-}
 
-// creates a new record
-function new_record($stock_day, $ticker_id, $date)
-{
-    global $wpdb;
-    $wpdb->insert(
-        "{$wpdb->prefix}stock_prices",
-        [
-            'ticker_id' => $ticker_id,
-            'date' => $date,
-            'open' => $stock_day['open'],
-            'high' => $stock_day['high'],
-            'low' => $stock_day['low'],
-            'close' => $stock_day['close'],
-            'volume' => $stock_day['volume'],
-            'adj_open' => $stock_day['adj_open'],
-            'adj_high' => $stock_day['adj_high'],
-            'adj_low' => $stock_day['adj_low'],
-            'adj_close' => $stock_day['adj_close'],
-            'adj_volume' => $stock_day['adj_volume'],
-            'split_factor' => $stock_day['split_factor'],
-            'dividend' => $stock_day['dividend'],
-            'symbol' => $stock_day['symbol'],
-            'exchange' => $stock_day['exchange'],
-        ],
-        [
-            '%d',
-            '%s',
-            '%f',
-            '%f',
-            '%f',
-            '%f',
-            '%d',
-            '%f',
-            '%f',
-            '%f',
-            '%f',
-            '%d',
-            '%f',
-            '%s',
-            '%s'
-        ]
-    );
-}
