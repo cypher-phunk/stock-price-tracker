@@ -54,4 +54,26 @@ class SDP_TMDB_API_Handler {
         return $body;
     }
 
+    public function get_series_details($series_id) {
+        if (empty($this->api_key)) {
+            return new WP_Error('no_api_key', 'API key is not set.');
+        }
+
+        $url = "https://api.themoviedb.org/3/tv/{$series_id}";
+        $response = wp_remote_get($url, [
+            'headers' => $this->auth_params
+        ]);
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        if ($response['response']['code'] !== 200) {
+            return new WP_Error('api_error', 'Failed to fetch series details.');
+        }
+        $body = json_decode($response['body'], true);
+        if (empty($body)) {
+            return new WP_Error('empty_response', 'No data returned from API.');
+        }
+        return $body;
+    }
+
 }
