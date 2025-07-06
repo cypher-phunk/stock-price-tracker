@@ -112,14 +112,26 @@ function sdp_handle_movie_post($post_id) {
     }
     $prefix = 'https://image.tmdb.org/t/p/original/';
     // Update acf fields with movie details
-    update_field('movie_title', $movie_details['title'], $post_id);
-    update_field('movie_tagline', $movie_details['tagline'], $post_id);
-    update_field('movie_overview', $movie_details['overview'], $post_id);
+    update_field('media_title', $movie_details['title'], $post_id);
+    update_field('media_tagline', $movie_details['tagline'], $post_id);
+    update_field('media_overview', $movie_details['overview'], $post_id);
     update_field('movie_release_date', $movie_details['release_date'], $post_id);
     update_field('movie_runtime', $movie_details['runtime'], $post_id);
-    update_field('movie_poster_path', $prefix . $movie_details['poster_path'], $post_id);
-    update_field('movie_backdrop_path', $prefix . $movie_details['backdrop_path'], $post_id);
+    update_field('media_poster_path', $prefix . $movie_details['poster_path'], $post_id);
+    update_field('media_backdrop_path', $prefix . $movie_details['backdrop_path'], $post_id);
 
+    // Sideload the poster image
+    $poster_url = $prefix . $movie_details['poster_path'];
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    $poster_id = media_sideload_image($poster_url, $post_id, null, 'id');
+    if (is_wp_error($poster_id)) {
+        error_log('Error sideloading poster image: ' . $poster_id->get_error_message());
+        return;
+    }
+    // Set the featured image for the post
+    set_post_thumbnail($post_id, $poster_id);
     // Update WordPress post title and content
     $post_data = [
         'ID' => $post_id,
@@ -155,9 +167,9 @@ function handle_series_post($post_id){
     }
     $prefix = 'https://image.tmdb.org/t/p/original/';
     // Update acf fields with movie details
-    update_field('series_title', $series_details['name'], $post_id);
-    update_field('series_tagline', $series_details['tagline'], $post_id);
-    update_field('series_overview', $series_details['overview'], $post_id);
+    update_field('media_title', $series_details['name'], $post_id);
+    update_field('media_tagline', $series_details['tagline'], $post_id);
+    update_field('media_overview', $series_details['overview'], $post_id);
     // Set date from release to end or ongoing based on status
     if ($series_details['status'] === 'Ended') {
         $end_date = $series_details['last_air_date'];
@@ -166,13 +178,24 @@ function handle_series_post($post_id){
         $date = $series_details['first_air_date'] . ' - Ongoing';
         update_field('series_date', $date, $post_id);
     }
-    update_field('series_poster_path', $prefix . $series_details['poster_path'], $post_id);
-    update_field('series_backdrop_path', $prefix . $series_details['backdrop_path'], $post_id);
+    update_field('media_poster_path', $prefix . $series_details['poster_path'], $post_id);
+    update_field('media_backdrop_path', $prefix . $series_details['backdrop_path'], $post_id);
     update_field('series_episodes', $series_details['number_of_episodes'], $post_id);
     update_field('series_seasons', $series_details['number_of_seasons'], $post_id);
     update_field('series_status', $series_details['status'], $post_id);
 
-    // Update WordPress post title and content
+    // Sideload the poster image
+    $poster_url = $prefix . $series_details['poster_path'];
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    $poster_id = media_sideload_image($poster_url, $post_id, null, 'id');
+    if (is_wp_error($poster_id)) {
+        error_log('Error sideloading poster image: ' . $poster_id->get_error_message());
+        return;
+    }
+    // Set the featured image for the post
+    set_post_thumbnail($post_id, $poster_id);
     $post_data = [
         'ID' => $post_id,
         'post_title' => $series_details['name'] . ' (' . date('Y', strtotime($series_details['release_date'])) . ')',
