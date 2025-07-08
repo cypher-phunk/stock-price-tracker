@@ -24,6 +24,7 @@ if (!defined('ABSPATH')) {
 // Include necessary files
 require_once plugin_dir_path(__FILE__) . 'db-helpers.php';
 require_once plugin_dir_path(__FILE__) . 'tmdb-movie-helper.php';
+require_once plugin_dir_path(__FILE__) . 'podcast-index-helper.php';
 
 error_log('Admin page loaded');
 
@@ -111,6 +112,9 @@ if (isset($_GET['test_xdebug'])) {
             echo '<div class="error"><p>Failed to save TMDB API Key.</p></div>';
         }
     }
+
+    // Podcast Index API Key Settings
+    sdp_podindex_api_key_settings_page();
     ?>
 
     <!-- Search on Internal Stock DB -->

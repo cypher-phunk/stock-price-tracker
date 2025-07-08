@@ -1,5 +1,6 @@
 <?php
 if (!defined('ABSPATH')) exit;
+
 function sdp_encrypt_api_key($key) {
     $salt = defined('NONCE_SALT') ? NONCE_SALT : wp_salt('auth');
     if (function_exists('openssl_encrypt')) {

@@ -115,6 +115,10 @@ require_once(SDP_PLUGIN_PATH . 'includes/reports-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/class-sdp-api.php');
 require_once(SDP_PLUGIN_PATH . 'includes/tmdb-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/tmdb-movie-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/podcast-index-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/podcast-index-api-handler.php');
+require_once(SDP_PLUGIN_PATH . 'includes/open-library-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/open-library-api-handler.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
