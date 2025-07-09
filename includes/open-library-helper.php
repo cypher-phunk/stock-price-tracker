@@ -56,11 +56,14 @@ function sdp_handle_book_post($post_id) {
             error_log('Error sideloading cover image: ' . $image_id->get_error_message());
         }
     }
+    remove_action('save_post', __FUNCTION__, 10, 1);
     $post_data = [
         'ID' => $post_id,
         'post_title' => $edition_details['title'],
+        'post_name' => sanitize_title($edition_details['title']),
     ];
     wp_update_post($post_data);
+    add_action('save_post', __FUNCTION__, 10, 1);
 }
 
 add_action('save_post', 'sdp_handle_book_post');

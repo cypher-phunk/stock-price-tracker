@@ -133,12 +133,15 @@ function sdp_handle_movie_post($post_id) {
     // Set the featured image for the post
     set_post_thumbnail($post_id, $poster_id);
     // Update WordPress post title and content
+    remove_action('save_post', __FUNCTION__, 10, 1);
     $post_data = [
         'ID' => $post_id,
         'post_title' => $movie_details['title'] . ' (' . date('Y', strtotime($movie_details['release_date'])) . ')',
+        'post_name' => sanitize_title($movie_details['title']),
     ];
     // Update the post in the database
     wp_update_post($post_data);
+    add_action('save_post', __FUNCTION__, 10, 1);
 }
 
 function handle_series_post($post_id){

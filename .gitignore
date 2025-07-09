@@ -20,3 +20,6 @@ vendor/
 # Ignore OS-specific files
 .DS_Store
 Thumbs.db
+
+composer.lock
+composer.json
