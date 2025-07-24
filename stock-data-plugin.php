@@ -551,6 +551,12 @@ function create_stock_post($symbol)
                 }
                 $term_id = $term_id['term_id'];
             }
+
+            $seo_title = $company_info->name . ' (' . $symbol . ') Stock Reports & Analysis';
+            $seo_description = 'Explore short reports, due diligence, and performance data for ' . $company_info->name . ' (' . $symbol . '). See why researchers are targeting this stock and how it’s reacting.';
+            update_post_meta($post_id, '_genesis_title', $seo_title);
+            update_post_meta($post_id, '_genesis_description', $seo_description);
+
         } else {
             error_log('ACF function not found');
         }

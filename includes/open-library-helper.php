@@ -35,15 +35,20 @@ function sdp_handle_book_post($post_id) {
     $work_details = $open_library_handler->get_work($edition_details['works'][0]['key'] ?? null);
     $author_details = $open_library_handler->get_author($edition_details['authors'][0]['key'] ?? null);
     $cover_image_url = $open_library_handler->get_edition_image($book_edition_id);
+    // Normalize book titles to ensure consistency with capitalization
+    $book_title = ucwords(strtolower($work_details['title']));
+    $book_subtitle = isset($edition_details['subtitle']) ? ucwords(strtolower($edition_details['subtitle'])) : '';
     // Update ACF fields with book details
     update_field('book_edition_olid', $book_edition_id, $post_id);
-    update_field('book_title', $work_details['title'], $post_id);
-    update_field('book_subtitle', $edition_details['subtitle'] ?? '', $post_id);
+    update_field('book_title', $book_title, $post_id);
+    update_field('book_subtitle', $book_subtitle, $post_id);
     update_field('book_authors', $author_details['name'] ?? ['personal_name'] ?? '', $post_id);
     update_field('book_publish_date', $edition_details['publish_date'] ?? '', $post_id);
     update_field('book_cover_image', $cover_image_url, $post_id);
-    update_field('book_description', $work_details['description'] ?? '', $post_id);
+    update_field('book_description', $work_details['description']['value'] ?? '', $post_id);
     update_field('book_subjects', implode(', ', $work_details['subjects'] ?? []), $post_id);
+    update_field('book_isbn_10', $edition_details['isbn_10'][0] ?? '', $post_id);
+    update_field('book_isbn_13', $edition_details['isbn_13'][0] ?? '', $post_id);
     // Set featured image if cover image is available and currently no image
     if ($cover_image_url && !has_post_thumbnail($post_id)) {
         require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -59,8 +64,8 @@ function sdp_handle_book_post($post_id) {
     remove_action('save_post', __FUNCTION__, 10, 1);
     $post_data = [
         'ID' => $post_id,
-        'post_title' => $edition_details['title'],
-        'post_name' => sanitize_title($edition_details['title']),
+        'post_title' => $book_title . ($book_subtitle ? ' - ' . $book_subtitle : ''),
+        'post_name' => sanitize_title($book_title),
     ];
     wp_update_post($post_data);
     add_action('save_post', __FUNCTION__, 10, 1);

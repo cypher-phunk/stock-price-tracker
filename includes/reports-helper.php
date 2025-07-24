@@ -21,6 +21,21 @@ function sdp_update_report_post_fields($post_id)
     $report_date = DateTime::createFromFormat('m/d/Y', $report_date)->format('Y-m-d');
   }
 
+  // Get the current post date to compare
+  $current_post_date = get_post_field('post_date', $post_id);
+  // Ensure the post date is the same as the report date
+  if ($report_date) {
+    $post_date = DateTime::createFromFormat('Y-m-d', $report_date);
+    if ($post_date && $post_date->format('Y-m-d') !== date('Y-m-d', strtotime($current_post_date))) {
+      $formatted_date = $post_date->format('Y-m-d H:i:s');
+      wp_update_post([
+        'ID' => $post_id,
+        'post_date' => $formatted_date,
+        'post_date_gmt' => get_gmt_from_date($formatted_date),
+      ]);
+    }
+  }
+
   // Fetch close price on report date
   $report_price = sdp_get_close_price_by_date($symbol, $report_date);
   if ($report_price !== null) {
@@ -59,10 +74,10 @@ function sdp_localize_report_data()
     if (!$researcher_post || !is_a($researcher_post[0], 'WP_Post')) continue;
     $researcher = $researcher_post[0]->post_title;
     $report_url = get_permalink($report->ID);
-    $thumbnail_url = get_the_post_thumbnail_url($researcher_post[0]->ID, 'thumbnail');
+    $thumbnail_url = get_the_post_thumbnail_url($researcher_post[0]->ID, 'post-thumbnail');
     $researcher_html = sprintf(
       '<div style="display:flex;align-items:center;gap:8px;">
-        <img src="%s" alt="%s" style="width:32px;height:32px;border-radius:50%%;object-fit:cover;">
+        <img src="%s" alt="%s" style="width:32px;height:32px;border-radius:50%%;object-fit:contain;">
         <a href="%s" class="report-link" style="display:none;">%s</a>
         <span>%s</span>
     </div>',
@@ -78,6 +93,7 @@ function sdp_localize_report_data()
     $price = get_field('close_price_on_report', $report->ID);
     $percent = get_field('percent_change_since_report', $report->ID);
     $data[] = [
+      $report_url,
       $researcher_html,
       $company_name,
       $symbol,
@@ -138,6 +154,8 @@ function update_report_title_and_slug($post_id) {
             'post_name'  => $new_slug,
         ]);
     }
+
+    sdp_update_report_post_fields($post_id);
 }
 
 add_action('acf/save_post', 'update_report_title_and_slug', 20);

@@ -286,12 +286,13 @@ function create_podcast_episode_post($episode, $podcast_post_id)
         error_log('Failed to create podcast episode post: ' . $post_id->get_error_message());
         return;
     }
-    if (!empty($episode['image'])) {
+    $unique_images = (get_field('podcast_unique_images', $podcast_post_id) === 'Yes');
+    if (!empty($episode['image']) && $unique_images) {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
         $image_url = $episode['image'];
-        $image_id = media_sideload_image($image_url, $podcast_post_id);
+        $image_id = media_sideload_image($image_url, $post_id);
     } else {
         // Set to podcast cover image if no episode image
         $image_id = get_post_thumbnail_id($podcast_post_id);
