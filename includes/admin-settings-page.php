@@ -200,6 +200,44 @@ if (isset($_GET['test_xdebug'])) {
         <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALLTicker Posts***</button>
     </div>
 
+    <!-- Force Ticker Into market_tickers Database -->
+    <h3>Force Ticker Into market_tickers Database</h3>
+    <form method="post">
+        <?php wp_nonce_field('force_ticker_action', 'force_ticker_nonce'); ?>
+        <p>Enter the ticker symbol to force into the database:</p>
+        <input type="text" name="force_ticker_symbol" required />
+        <?php submit_button('Force Ticker'); ?>
+    </form>
+
+    <?php
+    // Handle Force Ticker
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['force_ticker_nonce'])) {
+        if (wp_verify_nonce($_POST['force_ticker_nonce'], 'force_ticker_action')) {
+            $symbol = strtoupper(sanitize_text_field($_POST['force_ticker_symbol']));
+
+            global $wpdb;
+
+            // Check if ticker already exists
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}market_tickers WHERE symbol = %s",
+                $symbol
+            ));
+
+            if ($exists) {
+                echo '<div class="error"><p>Ticker already exists: ' . esc_html($symbol) . '</p></div>';
+            } else {
+                if (isset($symbol)) {
+                    $wpdb->insert("{$wpdb->prefix}market_tickers", [
+                        'symbol' => $symbol,
+                    ]);
+                }
+            }
+        } else {
+            echo '<div class="error"><p>Nonce verification failed.</p></div>';
+        }
+    }
+    ?>
+
     <h2>Manage Tickers</h2>
 
     <form method="post">

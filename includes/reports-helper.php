@@ -77,7 +77,7 @@ function sdp_localize_report_data()
     $thumbnail_url = get_the_post_thumbnail_url($researcher_post[0]->ID, 'post-thumbnail');
     $researcher_html = sprintf(
       '<div style="display:flex;align-items:center;gap:8px;">
-        <img src="%s" alt="%s" style="width:32px;height:32px;border-radius:50%%;object-fit:contain;">
+        <img src="%s" alt="%s" class="researcher-thumbnail" style="width:32px;height:32px;border-radius:50%%;object-fit:contain;">
         <a href="%s" class="report-link" style="display:none;">%s</a>
         <span>%s</span>
     </div>',
@@ -89,11 +89,17 @@ function sdp_localize_report_data()
     );
     $company_name = get_field('company_name', $stock[0]->ID ?? null);
     $symbol = get_field('ticker_symbol', $stock[0]->ID ?? null);
-    $date = get_field('report_date', $report->ID);
+    $date_raw = get_field('report_date', $report->ID);
+    $date = '';
+    if ($date_raw) {
+      $dt = DateTime::createFromFormat('m/d/Y', $date_raw);
+      if ($dt) {
+        $date = $dt->format('m/d/y');
+      }
+    }
     $price = get_field('close_price_on_report', $report->ID);
     $percent = get_field('percent_change_since_report', $report->ID);
     $data[] = [
-      $report_url,
       $researcher_html,
       $company_name,
       $symbol,
@@ -129,17 +135,17 @@ function update_report_title_and_slug($post_id) {
     if (!$date) return; // Skip if date is invalid
 
     $date_title = sprintf(
-        '%02d/%02d/%04d',
-        $date['month'],
-        $date['day'],
-        $date['year']
+      '%02d/%02d/%02d',
+      $date['month'],
+      $date['day'],
+      substr($date['year'], -2)
     );
 
     $date_slug = sprintf(
-        '%02d-%02d-%04d',
-        $date['month'],
-        $date['day'],
-        $date['year']
+      '%02d/%02d/%02d',
+      $date['month'],
+      $date['day'],
+      substr($date['year'], -2)
     );
 
     $new_title = "{$firm_name} Report on {$stock_name} | {$date_title}";
@@ -147,12 +153,13 @@ function update_report_title_and_slug($post_id) {
 
     $post = get_post($post_id);
 
-    if ($post->post_title !== $new_title || $post->post_name !== $new_slug) {
+    if ($post->post_name !== $new_slug) {
         wp_update_post([
             'ID'         => $post_id,
-            'post_title' => $new_title,
             'post_name'  => $new_slug,
         ]);
+        # Update title acf field
+        update_field('report_date_title', $new_title, $post_id);
     }
 
     sdp_update_report_post_fields($post_id);
