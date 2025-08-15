@@ -5,9 +5,9 @@ if (!defined('ABSPATH')) {
 }
 
 function sdp_localize_report_data_aggrid() {
-  /* $in_reports = is_post_type_archive('report');
+  $in_reports = is_post_type_archive('report');
   $is_home = is_front_page();
-  if (!$in_reports && !$is_home) return; */
+  if (!$in_reports && !$is_home) return;
 
   // Query report posts
   $reports = get_posts([

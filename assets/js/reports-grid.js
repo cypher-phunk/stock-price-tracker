@@ -2,7 +2,7 @@
 const { themeQuartz, iconSetMaterial } = agGrid;
 
 
-document.addEventListener('DOMContentLoaded', function () {
+function displayReportsGrid(){
   if (typeof sdpReportsData === 'undefined' || !sdpReportsData.rows) {
     console.log("No sdpReportsData found.");
     return;
@@ -233,4 +233,10 @@ if (typeof agGrid.createGrid === 'function') {
   new agGrid.Grid(gridEl, gridOptions);
 }
 
-});
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', displayReportsGrid)
+} else {
+  displayReportsGrid();
+}
