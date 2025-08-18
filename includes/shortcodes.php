@@ -245,7 +245,7 @@ function sdp_render_stock_chart($atts)
     $results = $wpdb->get_results($query, ARRAY_A);
     $data = array_map(static function ($r) {
         return [
-            'date' => date('m-d-Y', strtotime($r['date'])),
+            'date' => strtotime($r['date']) * 1000, // ISO format for JS
             'price' => floatval($r['close']),
         ];
     }, $results);
