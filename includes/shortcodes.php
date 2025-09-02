@@ -9,10 +9,18 @@ wp_register_script(
 );
 
 wp_register_script(
+    'ag-chart-enterprise',
+    'https://cdn.jsdelivr.net/npm/ag-charts-enterprise@12.0.0/dist/umd/ag-charts-enterprise.min.js',
+    [],
+    null,
+    true
+);
+
+wp_register_script(
     'stock-chart',
     plugin_dir_url(__DIR__) . 'assets/js/stock-chart.js',
     ['ag-chart'],
-    null,
+    100,
     true
 );
 
@@ -24,12 +32,16 @@ function sdp_register_shortcodes()
 
 function sdp_render_report_stock_chart($atts)
 {
+    wp_enqueue_script('ag-chart');
+    wp_enqueue_script('ag-chart-enterprise');
+    wp_enqueue_script('stock-chart');
     $post_id = get_the_ID();
     $report_date_raw = get_field('report_date', $post_id);
     if (!$report_date_raw)
         return '<p>Missing report date.</p>';
 
-    $report_date = date('Y-m-d', strtotime($report_date_raw));
+    $report_date = date('Y-m-d', strtotime($report_date_raw . ' +1 day'));
+    $day_before_report = date('Y-m-d', strtotime($report_date . ' -1 day'));
     $stock_post = get_field('symbol', $post_id);
     if (!($stock_post))
         return '<p>Missing stock.</p>';
@@ -48,14 +60,29 @@ function sdp_render_report_stock_chart($atts)
     $query = $wpdb->prepare(
         "SELECT date, close FROM {$wpdb->prefix}stock_prices
         WHERE ticker_id = %d
+        AND date BETWEEN %s AND %s
         ORDER BY date ASC",
-        $ticker_id
+        $ticker_id,
+        date('Y-m-d', strtotime($report_date . ' -15 days')),
+        date('Y-m-d', strtotime($report_date . ' +15 days')),
     );
-    $results = $wpdb->get_results($query);
-    if (!$results)
-        return '<p>No price data found.</p>';
-    ;
-
+    $results = $wpdb->get_results($query, ARRAY_A);
+    $data = array_map(static function ($r) {
+        return [
+            'date' => $r['date'],
+            'price' => floatval($r['close']),
+        ];
+    }, $results);
+    $report_day_price = floatval($results[array_search($report_date, array_column($results, 'date'))]['close']);
+    // Localize data and API
+    $ag_api_manager = new SDP_AG_API_Manager();
+    $api_key = $ag_api_manager->get_api_key();
+    echo '<div id="stock-chart" style="min-height:350px;width:100%;margin:1em 0;"></div>';
+    wp_localize_script('stock-chart', 'sdpStockData', $data);
+    wp_localize_script('stock-chart', 'sdpAgChartKey', $api_key);
+    wp_localize_script('stock-chart', 'sdpReportDate', $report_date);
+    wp_localize_script('stock-chart', 'sdpReportDayPrice', $report_day_price);
+    wp_localize_script('stock-chart', 'sdpDayBeforeReport', $day_before_report);
 }
 
 function sdp_render_report_stock_chart_archive($atts)
@@ -207,8 +234,16 @@ function sdp_render_report_stock_chart_archive($atts)
 function sdp_render_stock_chart($atts)
 {
     wp_enqueue_script('ag-chart');
+    wp_enqueue_script('ag-chart-enterprise');
     wp_enqueue_script('stock-chart');
+
+    // return if no /stock/ in url
+    if (strpos($_SERVER['REQUEST_URI'], '/stock/') === false) {
+        return;
+    }
+
     global $wpdb;
+
 
     $atts = shortcode_atts([
         'symbol' => '',
@@ -245,7 +280,7 @@ function sdp_render_stock_chart($atts)
     $results = $wpdb->get_results($query, ARRAY_A);
     $data = array_map(static function ($r) {
         return [
-            'date' => strtotime($r['date']) * 1000, // ISO format for JS
+            'date' => $r['date'],
             'price' => floatval($r['close']),
         ];
     }, $results);
@@ -254,6 +289,8 @@ function sdp_render_stock_chart($atts)
 
     echo '<div id="stock-chart" style="min-height:350px;width:100%;margin:1em 0;"></div>';
     wp_localize_script('stock-chart', 'sdpStockData', $data);
+    $ag_api_manager = new SDP_AG_API_Manager();
+    wp_localize_script('stock-chart', 'sdpAgChartKey', $ag_api_manager->get_api_key());
 }
 
 function sdp_render_stock_chart_archive($atts)

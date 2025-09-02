@@ -120,6 +120,10 @@ require_once(SDP_PLUGIN_PATH . 'includes/podcast-index-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/open-library-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/open-library-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/grids.php');
+require_once(SDP_PLUGIN_PATH . 'includes/ag-api-manager.php');
+require_once(SDP_PLUGIN_PATH . 'includes/taxonomy.php');
+// TODO Reimplement the Postgres analytics helper later.
+// require_once(SDP_PLUGIN_PATH . 'includes/postgres-analytics-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -366,6 +370,10 @@ function remove_stock_ticker_callback()
 
     $table = $wpdb->prefix . 'stock_tickers';
     $wpdb->delete($table, ['symbol' => $symbol]);
+    $stock_prices_table = $wpdb->prefix . 'stock_prices';
+    $wpdb->delete($stock_prices_table, ['symbol' => $symbol]);
+    $company_info_table = $wpdb->prefix . 'stock_company_info';
+    $wpdb->delete($company_info_table, ['ticker_id' => $symbol]);
 
     wp_send_json_success();
 }
@@ -470,7 +478,9 @@ function grab_company_info($symbol)
                 $wpdb->insert($table, $data);
             }
         }
+        return $company_info;
     }
+    return null;
 }
 
 function create_stock_post($symbol)
@@ -557,6 +567,13 @@ function create_stock_post($symbol)
             $seo_description = 'Explore short reports, due diligence, and performance data for ' . $company_info->name . ' (' . $symbol . '). See why researchers are targeting this stock and how it’s reacting.';
             update_post_meta($post_id, '_genesis_title', $seo_title);
             update_post_meta($post_id, '_genesis_description', $seo_description);
+            // WP Save Post
+            wp_update_post(['ID' => $post_id]);
+            // Post https webhook
+            $webhook_url = 'https://workflow.rodojo.dev/webhook/39b19eb6-0cd0-4053-80a1-af88ab7f7339';
+            wp_remote_get($webhook_url, [
+                'headers' => ['Content-Type' => 'application/json'],
+            ]);
 
         } else {
             error_log('ACF function not found');

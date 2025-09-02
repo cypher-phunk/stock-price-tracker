@@ -37,7 +37,10 @@ function sdp_update_report_post_fields($post_id)
   }
 
   // Fetch close price on report date
-  $report_price = sdp_get_close_price_by_date($symbol, $report_date);
+  // Adjust report_date to be the close price the day before
+  $day_before_report = new DateTime($report_date);
+  $day_before_report->modify('-1 day');
+  $report_price = sdp_get_close_price_by_date($symbol, $day_before_report->format('Y-m-d'));
   if ($report_price !== null) {
     update_field('close_price_on_report', $report_price, $post_id);
   }

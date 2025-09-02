@@ -117,7 +117,96 @@ if (isset($_GET['test_xdebug'])) {
     sdp_podindex_api_key_settings_page();
     ?>
 
-    <!-- Search on Internal Stock DB -->
+    <!-- Ag Charts API Key -->
+    <form method="post" action="">
+        <?php wp_nonce_field('sdp_save_ag_charts_api_key', 'sdp_ag_charts_api_key_nonce'); ?>
+        <input type="hidden" name="action" value="save_api_key" />
+        <p class="description">Make sure to save your API key before using the Ag Charts features.</p>
+        <table class="form-table">
+            <tr valign="top">
+                <th scope="row">Ag Charts API Key</th>
+                <td>
+                    <?php
+                    $ag_api_manager = new SDP_AG_API_Manager();
+                    $ag_charts_api_key = $ag_api_manager->get_api_key();
+                    $display_key = '';
+                    if (!empty($ag_charts_api_key)) {
+                        $display_key = substr($ag_charts_api_key, 0, 4) . str_repeat('*', max(0, strlen($ag_charts_api_key) - 4));
+                    }
+                    ?>
+                    <input type="text" name="sdp_ag_charts_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
+                    <p class="description">Your API key from <a href="https://www.ag-charts.com/documentation/api" target="_blank">Ag Charts</a>. Keep this key secure.</p>
+                </td>
+            </tr>
+        </table>
+        <?php submit_button('Save API Key'); ?>
+    </form>
+    <?php
+
+    // Handle Ag Charts API Key submission
+    if (isset($_POST['sdp_ag_charts_api_key_nonce']) && wp_verify_nonce($_POST['sdp_ag_charts_api_key_nonce'], 'sdp_save_ag_charts_api_key')) {
+        $ag_charts_api_key = sanitize_text_field($_POST['sdp_ag_charts_api_key']);
+        $ag_api_manager->set_api_key($ag_charts_api_key);
+        echo '<div class="updated"><p>Ag Charts API Key saved successfully.</p></div>';
+    }
+
+    // Postgres DB settings
+    ?>
+    <h2>Postgres DB Settings</h2>
+    <form method="post" action="">
+        <?php wp_nonce_field('sdp_save_postgres_db_settings', 'sdp_postgres_db_settings_nonce'); ?>
+        <input type="hidden" name="action" value="save_postgres_db_settings" />
+        <table class="form-table">
+            <tr valign="top">
+                <th scope="row">Host</th>
+                <td><input type="text" name="sdp_postgres_host" value="<?php echo esc_attr(get_option('sdp_postgres_host')); ?>" size="50" required /></td>
+            </tr>
+            <tr valign="top">
+                <th scope="row">Port</th>
+                <td><input type="text" name="sdp_postgres_port" value="<?php echo esc_attr(get_option('sdp_postgres_port')); ?>" size="50" required /></td>
+            </tr>
+            <tr valign="top">
+                <th scope="row">Database</th>
+                <td><input type="text" name="sdp_postgres_db" value="<?php echo esc_attr(get_option('sdp_postgres_db')); ?>" size="50" required /></td>
+            </tr>
+            <tr valign="top">
+                <th scope="row">Schema</th>
+                <td><input type="text" name="sdp_postgres_schema" value="<?php echo esc_attr(get_option('sdp_postgres_schema')); ?>" size="50" required /></td>
+            </tr>
+            <tr valign="top">
+                <th scope="row">User</th>
+                <td><input type="text" name="sdp_postgres_user" value="<?php echo esc_attr(get_option('sdp_postgres_user')); ?>" size="50" required /></td>
+            </tr>
+            <tr valign="top">
+                <th scope="row">Password</th>
+                <td><input type="password" name="sdp_postgres_password" value="<?php echo esc_attr(get_option('sdp_postgres_password')); ?>" size="50" required /></td>
+            </tr>
+        </table>
+        <?php submit_button('Save Postgres DB Settings'); ?>
+    </form>
+
+    <?php
+    // Encrypt the settings
+    if (isset($_POST['sdp_postgres_db_settings_nonce']) && wp_verify_nonce($_POST['sdp_postgres_db_settings_nonce'], 'sdp_save_postgres_db_settings')) {
+        $encrypted_host    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_host']));
+        $encrypted_port    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_port']));
+        $encrypted_db      = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_db']));
+        $encrypted_schema  = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_schema']));
+        $encrypted_user    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_user']));
+        $encrypted_password = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_password']));
+        // define all of the keys
+        update_option('sdp_postgres_host', $encrypted_host);
+        update_option('sdp_postgres_port', $encrypted_port);
+        update_option('sdp_postgres_db', $encrypted_db);
+        update_option('sdp_postgres_schema', $encrypted_schema);
+        update_option('sdp_postgres_user', $encrypted_user);
+        update_option('sdp_postgres_password', $encrypted_password);
+
+        echo '<div class="updated"><p>Postgres DB Settings saved successfully.</p></div>';
+    }
+
+    // Search on Internal Stock DB
+    ?>
     <h2>Live Stock Symbol Search</h2>
     <input type="text" id="ticker-search" placeholder="Search stock symbol..." />
     <div id="results"></div>
@@ -197,7 +286,7 @@ if (isset($_GET['test_xdebug'])) {
 
     <div>
         <!-- Add all ticker posts here -->
-        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALLTicker Posts***</button>
+        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALL Ticker Posts***</button>
     </div>
 
     <!-- Force Ticker Into market_tickers Database -->
