@@ -123,7 +123,7 @@ require_once(SDP_PLUGIN_PATH . 'includes/grids.php');
 require_once(SDP_PLUGIN_PATH . 'includes/ag-api-manager.php');
 require_once(SDP_PLUGIN_PATH . 'includes/taxonomy.php');
 // TODO Reimplement the Postgres analytics helper later.
-// require_once(SDP_PLUGIN_PATH . 'includes/postgres-analytics-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/postgres-analytics-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -430,6 +430,9 @@ function add_stock_tickers_callback()
         create_stock_post($symbol);
         create_stock_historical_data($symbol);
         sdp_update_stock_metric($symbol);
+        $pg_analytics = new SDP_PG();
+        $pg_analytics->save_stock_to_postgres($symbol);
+        unset($pg_analytics);
     }
 
     wp_send_json_success(['added' => $added]);
@@ -440,47 +443,45 @@ function grab_company_info($symbol)
     $api = new SDP_API_Handler();
     $company_info = $api->get_company_info($symbol);
 
-    if ($company_info) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'stock_company_info';
 
-        $exchange = null;
-        if (!empty($company_info['stock_exchanges']) && is_array($company_info['stock_exchanges'])) {
-            $last_exchange = end($company_info['stock_exchanges']);
-            $exchange = $last_exchange['acronym1'] ?? null;
-        }
+    global $wpdb;
+    $table = $wpdb->prefix . 'stock_company_info';
 
-        $data = [
-            'ticker_id' => $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s",
-                $symbol
-            )),
-            'name' => $company_info['name'] ?? null,
-            'exchange' => $exchange,
-            'sector' => $company_info['sector'] ?? null,
-            'industry' => $company_info['industry'] ?? null,
-            'website' => $company_info['website'] ?? null,
-            'about' => $company_info['about'] ?? null
-        ];
-
-        // Insert or update company info
-        if ($data['ticker_id']) {
-            // Check if the ticker already exists
-            $existing = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM $table WHERE ticker_id = %d",
-                $data['ticker_id']
-            ));
-            if ($existing) {
-                // Update existing record
-                $wpdb->update($table, $data, ['ticker_id' => $data['ticker_id']]);
-            } else {
-                // Insert new record
-                $wpdb->insert($table, $data);
-            }
-        }
-        return $company_info;
+    $exchange = null;
+    if (!empty($company_info['stock_exchanges']) && is_array($company_info['stock_exchanges'])) {
+        $last_exchange = end($company_info['stock_exchanges']);
+        $exchange = $last_exchange['acronym1'] ?? null;
     }
-    return null;
+
+    $data = [
+        'ticker_id' => $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}stock_tickers WHERE symbol = %s",
+            $symbol
+        )),
+        'name' => $company_info['name'] ?? null,
+        'exchange' => $exchange,
+        'sector' => $company_info['sector'] ?? null,
+        'industry' => $company_info['industry'] ?? null,
+        'website' => $company_info['website'] ?? null,
+        'about' => $company_info['about'] ?? null
+    ];
+
+    // Insert or update company info
+    if ($data['ticker_id']) {
+        // Check if the ticker already exists
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE ticker_id = %d",
+            $data['ticker_id']
+        ));
+        if ($existing) {
+            // Update existing record
+            $wpdb->update($table, $data, ['ticker_id' => $data['ticker_id']]);
+        } else {
+            // Insert new record
+            $wpdb->insert($table, $data);
+        }
+    }
+    return $company_info;
 }
 
 function create_stock_post($symbol)
@@ -574,7 +575,6 @@ function create_stock_post($symbol)
             wp_remote_get($webhook_url, [
                 'headers' => ['Content-Type' => 'application/json'],
             ]);
-
         } else {
             error_log('ACF function not found');
         }
@@ -769,19 +769,19 @@ add_action('admin_notices', function () {
 
 // if homepage or /reports
 add_action('wp_enqueue_scripts', function () {
-  wp_enqueue_script(
-    'ag-grid',
-    'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js',
-    [],
-    null,
-    true
-  );
+    wp_enqueue_script(
+        'ag-grid',
+        'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js',
+        [],
+        null,
+        true
+    );
 
-  wp_enqueue_script(
-    'reports-grid',
-    plugin_dir_url(__FILE__) . 'assets/js/reports-grid.js',
-    ['ag-grid'],
-    null,
-    true
-  );
+    wp_enqueue_script(
+        'reports-grid',
+        plugin_dir_url(__FILE__) . 'assets/js/reports-grid.js',
+        ['ag-grid'],
+        null,
+        true
+    );
 });

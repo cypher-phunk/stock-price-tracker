@@ -1,28 +1,33 @@
 <?php
 
-wp_register_script(
-    'ag-chart',
-    'https://cdn.jsdelivr.net/npm/ag-charts-community/dist/umd/ag-charts-community.js',
-    [],
-    null,
-    true
-);
+add_action('init', 'register_stock_charts_scripts');
 
-wp_register_script(
-    'ag-chart-enterprise',
-    'https://cdn.jsdelivr.net/npm/ag-charts-enterprise@12.0.0/dist/umd/ag-charts-enterprise.min.js',
-    [],
-    null,
-    true
-);
+function register_stock_charts_scripts()
+{
+    wp_register_script(
+        'ag-chart',
+        'https://cdn.jsdelivr.net/npm/ag-charts-community/dist/umd/ag-charts-community.js',
+        [],
+        null,
+        true
+    );
 
-wp_register_script(
-    'stock-chart',
-    plugin_dir_url(__DIR__) . 'assets/js/stock-chart.js',
-    ['ag-chart'],
-    100,
-    true
-);
+    wp_register_script(
+        'ag-chart-enterprise',
+        'https://cdn.jsdelivr.net/npm/ag-charts-enterprise@12.0.0/dist/umd/ag-charts-enterprise.min.js',
+        [],
+        null,
+        true
+    );
+
+    wp_register_script(
+        'stock-chart',
+        plugin_dir_url(__DIR__) . 'assets/js/stock-chart.js',
+        ['ag-chart'],
+        100,
+        true
+    );
+}
 
 function sdp_register_shortcodes()
 {
@@ -188,15 +193,15 @@ function sdp_render_report_stock_chart_archive($atts)
                     curve: 'smooth'
                 },
                 series: [{
-                    name: 'Up',
-                    data: <?php echo json_encode($data_up); ?>,
-                    color: '#00E396'
-                },
-                {
-                    name: 'Down',
-                    data: <?php echo json_encode($data_down); ?>,
-                    color: '#FF4560'
-                }
+                        name: 'Up',
+                        data: <?php echo json_encode($data_up); ?>,
+                        color: '#00E396'
+                    },
+                    {
+                        name: 'Down',
+                        data: <?php echo json_encode($data_down); ?>,
+                        color: '#FF4560'
+                    }
                 ],
 
                 xaxis: {
@@ -224,7 +229,7 @@ function sdp_render_report_stock_chart_archive($atts)
             new ApexCharts(document.querySelector("#<?php echo esc_attr($chart_id); ?>"), options).render();
         });
     </script>
-    <?php
+<?php
     return ob_get_clean();
 }
 
@@ -402,15 +407,15 @@ function sdp_render_stock_chart_archive($atts)
                     curve: 'smooth'
                 },
                 series: [{
-                    name: 'Up',
-                    data: <?php echo json_encode($data_up); ?>,
-                    color: '#00E396'
-                },
-                {
-                    name: 'Down',
-                    data: <?php echo json_encode($data_down); ?>,
-                    color: '#FF4560'
-                }
+                        name: 'Up',
+                        data: <?php echo json_encode($data_up); ?>,
+                        color: '#00E396'
+                    },
+                    {
+                        name: 'Down',
+                        data: <?php echo json_encode($data_down); ?>,
+                        color: '#FF4560'
+                    }
                 ],
 
                 xaxis: {
@@ -424,6 +429,6 @@ function sdp_render_stock_chart_archive($atts)
             new ApexCharts(document.querySelector("#<?php echo esc_attr($chart_id); ?>"), options).render();
         });
     </script>
-    <?php
+<?php
     return ob_get_clean();
 }

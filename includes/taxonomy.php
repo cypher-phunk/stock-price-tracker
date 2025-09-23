@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) {
   exit;
 }
 
-const SDP_ACF_FIELD_MENTIONED_STOCKS = 'mentioned_stocks'; // ACF relationship field on reports/posts returning Stock post IDs.
+const SDP_ACF_FIELD_MENTIONED_STOCKS = 'blog_post_stock'; // ACF relationship field on reports/posts returning Stock post IDs.
 const SDP_REPORTED_STOCK_TICKER      = 'symbol'; // ACF field for stock ticker ID
 const SDP_STOCK_POST_TYPE            = 'stock';
 const SDP_REPORT_POST_TYPE           = 'report';
@@ -171,6 +171,7 @@ function sdp_assign_terms(int $post_id, array $sector_names, array $industry_pai
 add_action('save_post_' . SDP_STOCK_POST_TYPE, function ($post_id) {
     if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
     static $guard = false; if ($guard) return; $guard = true;
+    remove_action('save_post_' . SDP_STOCK_POST_TYPE, __FUNCTION__);
 
     [$sector, $industry] = sdp_get_stock_sector_industry_from_db((int)$post_id);
 
@@ -178,7 +179,7 @@ add_action('save_post_' . SDP_STOCK_POST_TYPE, function ($post_id) {
     $industries = $industry ? [[$industry, $sector]] : [];
 
     sdp_assign_terms((int)$post_id, $sectors, $industries);
-
+    add_action('save_post_' . SDP_STOCK_POST_TYPE, __FUNCTION__);
     $guard = false;
 }, 10);
 
@@ -189,6 +190,7 @@ foreach (SDP_APPLY_TO_POST_TYPES as $ptype) {
     add_action('save_post_' . $ptype, function ($post_id) use ($ptype) {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
         static $guard = false; if ($guard) return; $guard = true;
+        remove_action('save_post_' . $ptype, __FUNCTION__);
 
         // Collect mentioned stocks
         $stock_ids = [];
@@ -230,7 +232,7 @@ foreach (SDP_APPLY_TO_POST_TYPES as $ptype) {
 
         // Assign to this post
         sdp_assign_terms((int)$post_id, $sectors, $industries);
-
+        add_action('save_post_' . $ptype, __FUNCTION__);
         $guard = false;
     }, 10);
 }

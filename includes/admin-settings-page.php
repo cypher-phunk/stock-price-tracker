@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Admin Settings Page for Stock Data Plugin
  *
@@ -159,27 +160,27 @@ if (isset($_GET['test_xdebug'])) {
         <table class="form-table">
             <tr valign="top">
                 <th scope="row">Host</th>
-                <td><input type="text" name="sdp_postgres_host" value="<?php echo esc_attr(get_option('sdp_postgres_host')); ?>" size="50" required /></td>
+                <td><input type="text" name="sdp_postgres_host" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_host'))); ?>" size="50" required /></td>
             </tr>
             <tr valign="top">
                 <th scope="row">Port</th>
-                <td><input type="text" name="sdp_postgres_port" value="<?php echo esc_attr(get_option('sdp_postgres_port')); ?>" size="50" required /></td>
+                <td><input type="text" name="sdp_postgres_port" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_port'))); ?>" size="50" required /></td>
             </tr>
             <tr valign="top">
                 <th scope="row">Database</th>
-                <td><input type="text" name="sdp_postgres_db" value="<?php echo esc_attr(get_option('sdp_postgres_db')); ?>" size="50" required /></td>
+                <td><input type="text" name="sdp_postgres_db" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_db'))); ?>" size="50" required /></td>
             </tr>
             <tr valign="top">
                 <th scope="row">Schema</th>
-                <td><input type="text" name="sdp_postgres_schema" value="<?php echo esc_attr(get_option('sdp_postgres_schema')); ?>" size="50" required /></td>
+                <td><input type="text" name="sdp_postgres_schema" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_schema'))); ?>" size="50" required /></td>
             </tr>
             <tr valign="top">
                 <th scope="row">User</th>
-                <td><input type="text" name="sdp_postgres_user" value="<?php echo esc_attr(get_option('sdp_postgres_user')); ?>" size="50" required /></td>
+                <td><input type="text" name="sdp_postgres_user" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_user'))); ?>" size="50" required /></td>
             </tr>
             <tr valign="top">
                 <th scope="row">Password</th>
-                <td><input type="password" name="sdp_postgres_password" value="<?php echo esc_attr(get_option('sdp_postgres_password')); ?>" size="50" required /></td>
+                <td><input type="password" name="sdp_postgres_password" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_password'))); ?>" size="50" required /></td>
             </tr>
         </table>
         <?php submit_button('Save Postgres DB Settings'); ?>
@@ -204,6 +205,78 @@ if (isset($_GET['test_xdebug'])) {
 
         echo '<div class="updated"><p>Postgres DB Settings saved successfully.</p></div>';
     }
+
+    // 1. Check PostgreSQL extension
+    if (!extension_loaded('pgsql')) {
+        echo '<div class="error"><p>PostgreSQL extension is not loaded in PHP</p></div>';
+        return;
+    }
+    echo '<div class="updated"><p>PostgreSQL extension is loaded</p></div>';
+
+    // 2. Build and test connection string
+    $host = sdp_decrypt_api_key(get_option('sdp_postgres_host'));
+    $port = sdp_decrypt_api_key(get_option('sdp_postgres_port'));
+    $dbname = sdp_decrypt_api_key(get_option('sdp_postgres_db'));
+    $user = sdp_decrypt_api_key(get_option('sdp_postgres_user'));
+    $password = sdp_decrypt_api_key(get_option('sdp_postgres_password'));
+
+    // 3. Test network connectivity first
+    $socket = @fsockopen($host, $port, $errno, $errstr, 10);
+    if ($socket) {
+        echo '<div class="updated"><p>Network connection to ' . esc_html($host) . ':' . esc_html($port) . ' successful</p></div>';
+        fclose($socket);
+    } else {
+        echo '<div class="error"><p>Cannot reach ' . esc_html($host) . ':' . esc_html($port) . ' - Error ' . $errno . ': ' . esc_html($errstr) . '</p></div>';
+        return; // Stop here if we can't even reach the server
+    }
+
+    // 4. Try connection with proper error handling
+    $conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode=require";
+
+    // Show connection string for debugging (hide password)
+    $debug_string = "host={$host} port={$port} dbname={$dbname} user={$user} password=*** sslmode=require";
+    echo '<div class="updated"><p>Attempting connection with: ' . esc_html($debug_string) . '</p></div>';
+
+    // Clear any previous errors
+    error_clear_last();
+
+    // Attempt connection
+    $connection = @pg_connect($conn_string);
+
+    if ($connection) {
+        echo '<div class="updated"><p>PostgreSQL connection successful!</p></div>';
+        pg_close($connection);
+    } else {
+        // Get PHP error if available
+        $php_error = error_get_last();
+        if ($php_error && (strpos($php_error['message'], 'pg_connect') !== false)) {
+            echo '<div class="error"><p>Connection failed - PHP Error: ' . esc_html($php_error['message']) . '</p></div>';
+        } else {
+            echo '<div class="error"><p>Connection failed - Unknown error (no connection resource created)</p></div>';
+        }
+
+        // Try different SSL modes
+        $ssl_modes = ['disable', 'prefer', 'require'];
+        foreach ($ssl_modes as $ssl_mode) {
+            $test_conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode={$ssl_mode}";
+            $test_connection = @pg_connect($test_conn_string);
+
+            if ($test_connection) {
+                echo '<div class="updated"><p>SUCCESS: Connection worked with sslmode=' . esc_html($ssl_mode) . '</p></div>';
+                pg_close($test_connection);
+                break;
+            } else {
+                $test_error = error_get_last();
+                if ($test_error && (strpos($test_error['message'], 'pg_connect') !== false)) {
+                    echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': ' . esc_html($test_error['message']) . '</p></div>';
+                } else {
+                    echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': No detailed error available</p></div>';
+                }
+            }
+        }
+    }
+    echo '<div class="updated"><p>OpenSSL loaded: ' . (extension_loaded('openssl') ? 'Yes' : 'No') . '</p></div>';
+    echo '<div class="updated"><p>PHP Version: ' . PHP_VERSION . '</p></div>';
 
     // Search on Internal Stock DB
     ?>
@@ -230,7 +303,7 @@ if (isset($_GET['test_xdebug'])) {
 
             $api_handler = new SDP_API_Handler();
             $tickers = $api_handler->fetch_marketstack_tickers();
-          
+
             // Check for errors
             if (is_wp_error($tickers)) {
                 echo '<div class="error"><p>Error refreshing tickers: ' .
@@ -263,7 +336,7 @@ if (isset($_GET['test_xdebug'])) {
         }
     }
     ?>
-  
+
     <h3>Check & Add Tracked Tickers</h3>
     <textarea id="bulk-tickers" rows="3" placeholder="Enter symbols like: AAPL,TSLA,AI"></textarea>
     <br>
@@ -418,8 +491,8 @@ if (isset($_GET['test_xdebug'])) {
                 // For example, you can call the API to fetch data for the specified date range
                 error_log("Fetching missing days from $date_from to $date_to");
             }
+        }
     }
-}
     ?>
 
     <form method="post">
@@ -809,5 +882,3 @@ function suggest_marketstack_tickers()
         echo '<p>Check the <a href="https://marketstack.com/search" target="_blank">Marketstack</a> website for valid ticker symbols.</p>';
     }
 }
-
-
