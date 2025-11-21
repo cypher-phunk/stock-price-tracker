@@ -27,6 +27,7 @@ function register_stock_charts_scripts()
         100,
         true
     );
+
 }
 
 function sdp_register_shortcodes()

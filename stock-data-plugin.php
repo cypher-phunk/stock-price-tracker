@@ -122,8 +122,10 @@ require_once(SDP_PLUGIN_PATH . 'includes/open-library-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/grids.php');
 require_once(SDP_PLUGIN_PATH . 'includes/ag-api-manager.php');
 require_once(SDP_PLUGIN_PATH . 'includes/taxonomy.php');
+require_once(SDP_PLUGIN_PATH . 'includes/register-taxonomy.php');
 // TODO Reimplement the Postgres analytics helper later.
 require_once(SDP_PLUGIN_PATH . 'includes/postgres-analytics-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/postgres-dashboard-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -767,7 +769,6 @@ add_action('admin_notices', function () {
     }
 });
 
-// if homepage or /reports
 add_action('wp_enqueue_scripts', function () {
     wp_enqueue_script(
         'ag-grid',

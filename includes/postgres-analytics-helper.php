@@ -8,9 +8,8 @@ class SDP_PG
     private $pdo = null;
 
     private $cpt_company = 'company';  // researcher source
-    private $cpt_report  = 'report';   // reports
-
-    private $db_schema = 'production'; // your target schema
+    private $cpt_report  = 'report';   // report
+    private $db_schema = 'production';    // PostgreSQL schema CHANGE THIS
 
     // ACF field handles on report posts:
     private $acf_researcher_company = 'researcher_company'; // Post Object to 'company' CPT
@@ -24,15 +23,19 @@ class SDP_PG
 
     function __construct()
     {
-        add_action("save_post_{$this->cpt_company}", [$this, 'on_save_company'], 10, 3);
-        add_action("save_post_{$this->cpt_report}",  [$this, 'on_save_report'], 10, 3);
+        add_action("acf/save_post", [$this, 'on_save_company'], 21, 3);
+        add_action("acf/save_post",  [$this, 'on_save_report'], 22, 3);
 
         if (defined('WP_CLI')) {
             \WP_CLI::add_command('activ8 backfill-researchers', [$this, 'cli_backfill_researchers']);
             \WP_CLI::add_command('activ8 backfill-stocks',      [$this, 'cli_backfill_stocks']);
             \WP_CLI::add_command('activ8 backfill-reports',     [$this, 'cli_backfill_reports']);
         }
+
+        add_action('admin_post_activ8_run_functions', [$this, 'handle_run_functions_submit']);
     }
+
+
 
     /*** PDO ***/
     private function pdo(): PDO
@@ -42,7 +45,6 @@ class SDP_PG
         $host = sdp_decrypt_api_key(get_option('sdp_postgres_host'));
         $port = sdp_decrypt_api_key(get_option('sdp_postgres_port'));
         $db   = sdp_decrypt_api_key(get_option('sdp_postgres_db'));
-        $schema = sdp_decrypt_api_key(get_option('sdp_postgres_schema'));
         $user = sdp_decrypt_api_key(get_option('sdp_postgres_user'));
         $pass = sdp_decrypt_api_key(get_option('sdp_postgres_password'));
         $ssl  = 'require';
@@ -67,7 +69,7 @@ class SDP_PG
     {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
         if ($post->post_type !== $this->cpt_company) return;
-        do_action('acf/save_post', $post_id); // ensure ACF fields are saved
+        // do_action('acf/save_post', $post_id); // ensure ACF fields are saved
 
         // researcher_name: prefer post_title; fall back to post_name if you truly want slug
         $researcher_name = get_the_title($post_id) ?: $post->post_name;
@@ -88,7 +90,7 @@ SQL;
     }
 
     /*** STOCK_INFO: combine wp_stock_company_info + wp_stock_tickers ***/
-    public function cli_backfill_stocks($args, $assoc)
+    public function cli_backfill_stocks()
     {
         global $wpdb;
         $tblCo = $wpdb->prefix . 'stock_company_info';
@@ -169,19 +171,19 @@ SQL;
             $checkSt = $this->pdo()->prepare($checkSql);
 
             $sqlInsert = <<<SQL
-INSERT INTO {$this->db_schema}.stock_info (company_id, ticker, company_name, industry, sector, updated_at)
-VALUES (:id, :ticker, :name, :industry, :sector, NOW());
-SQL;
+            INSERT INTO {$this->db_schema}.stock_info (company_id, ticker, company_name, industry, sector, updated_at)
+            VALUES (:id, :ticker, :name, :industry, :sector, NOW());
+            SQL;
 
             $sqlUpdate = <<<SQL
-UPDATE {$this->db_schema}.stock_info
-SET ticker = :ticker,
-    company_name = :name,
-    industry = :industry,
-    sector = :sector,
-    updated_at = NOW()
-WHERE company_id = :id;
-SQL;
+            UPDATE {$this->db_schema}.stock_info
+            SET ticker = :ticker,
+                company_name = :name,
+                industry = :industry,
+                sector = :sector,
+                updated_at = NOW()
+            WHERE company_id = :id;
+            SQL;
 
             // Prepare both statements
             $insertSt = $this->pdo()->prepare($sqlInsert);
@@ -233,7 +235,7 @@ SQL;
     }
 
     /*** RESEARCHERS backfill: all 'company' posts ***/
-    public function cli_backfill_researchers($args, $assoc)
+    public function cli_backfill_researchers()
     {
         if (defined('WP_CLI')) {
             \WP_CLI::log('Starting researchers backfill from company posts...');
@@ -256,12 +258,14 @@ SQL;
     {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
         if ($post->post_type !== $this->cpt_report) return;
-        do_action('acf/save_post', $post_id); // ensure ACF fields are saved
+        // do_action('acf/save_post', $post_id); // ensure ACF fields are saved
 
         // Get ACF relationship fields (these return post IDs)
         $researcher_post_id = get_field('research_company', $post_id); // Post ID of researcher
         $stock_post_id = get_field('symbol', $post_id); // Post ID of stock post
         $report_date = get_field('report_date', $post_id); // Date in m/d/Y format
+        $report_id = get_field('report_id', $post_id); // report Id
+
         if (defined('WP_CLI')) {
             \WP_CLI::log("Raw ACF values: researcher_post_id=" . print_r($researcher_post_id, true) . ", stock_post_id=" . print_r($stock_post_id, true) . ", report_date={$report_date}");
         }
@@ -277,8 +281,8 @@ SQL;
         }
 
         // Validate we have the basic required fields
-        if (!$researcher_id || !$stock_id || !$report_date) {
-            $message = "[A8PG] Skipping post {$post_id} - Missing ACF data: researcher={$researcher_id}, stock={$stock_id}, date={$report_date}";
+        if (!$researcher_id || !$stock_id || !$report_date || !$report_id) {
+            $message = "[A8PG] Skipping post {$post_id} - Missing ACF data: researcher={$researcher_id}, stock={$stock_id}, date={$report_date}, report_id={$report_id}";
             error_log($message);
             if (defined('WP_CLI')) {
                 \WP_CLI::warning($message);
@@ -306,7 +310,7 @@ SQL;
             }
             return;
         }
-        
+
         $stock_id = $stock_ticker_pkey;
 
         // Get company_id from database using ticker
@@ -338,11 +342,11 @@ SQL;
         // Insert/update in PostgreSQL
         try {
             $sql = <<<SQL
-    INSERT INTO {$this->db_schema}.reports (researcher_id, company_id, reportdts, reportprice_open, reportprice_close, reportprice_prior)
-    VALUES (:rid, :cid, :d, NULL, NULL, NULL)
-    ON CONFLICT (researcher_id, company_id, reportdts)
-    DO NOTHING;
-    SQL;
+            INSERT INTO {$this->db_schema}.reports (researcher_id, company_id, reportdts, reportprice_open, reportprice_close, reportprice_prior)
+            VALUES (:rid, :cid, :d, NULL, NULL, NULL)
+            ON CONFLICT (researcher_id, company_id, reportdts)
+            DO NOTHING;
+            SQL;
 
             $st = $this->pdo()->prepare($sql);
             $result = $st->execute([
@@ -404,11 +408,10 @@ SQL;
             // Prepare insert or update
             if ($exists) {
                 $sqlUpdate = <<<SQL
-        UPDATE {$this->db_schema}.stock_info
-        SET ticker = :ticker
-        WHERE company_id = :id
-        SQL;
-
+                UPDATE {$this->db_schema}.stock_info
+                SET ticker = :ticker
+                WHERE company_id = :id
+                SQL;
                 $updateSt = $this->pdo()->prepare($sqlUpdate);
                 $updateSt->execute([
                     ':ticker' => $ticker,
@@ -416,10 +419,9 @@ SQL;
                 ]);
             } else {
                 $sqlInsert = <<<SQL
-        INSERT INTO {$this->db_schema}.stock_info (company_id, ticker)
-        VALUES (:id, :ticker)
-        SQL;
-
+                INSERT INTO {$this->db_schema}.stock_info (company_id, ticker)
+                VALUES (:id, :ticker)
+                SQL;
                 $insertSt = $this->pdo()->prepare($sqlInsert);
                 $insertSt->execute([
                     ':id' => $result->company_id,
@@ -443,27 +445,29 @@ SQL;
         // Method 1: Check if ticker is stored as ACF field on the stock post
         $ticker = get_field('ticker', $stock_post_id);
         if ($ticker) {
-            return trim($ticker);
+            return strtoupper(trim($ticker));
         }
 
         // Method 2: Check if ticker is stored as post meta
         $ticker = get_post_meta($stock_post_id, 'ticker', true);
         if ($ticker) {
-            return trim($ticker);
+            return strtoupper(trim($ticker));
         }
 
         // Method 3: Use post title or slug as ticker (if that's how it's structured)
         $post = get_post($stock_post_id);
         if ($post) {
             // Maybe the post title is the ticker?
+            $rx = '/^[A-Z0-9.\-]{1,15}$/';
+
             $title = trim($post->post_title);
-            if (preg_match('/^[A-Z]{1,5}$/', $title)) { // Basic ticker format check
+            if (preg_match($rx, $title)) {
                 return $title;
             }
 
             // Maybe the post slug is the ticker?
             $slug = strtoupper(trim($post->post_name));
-            if (preg_match('/^[A-Z]{1,5}$/', $slug)) {
+            if (preg_match($rx, $slug)) {
                 return $slug;
             }
         }
@@ -480,9 +484,12 @@ SQL;
 
         // First try PostgreSQL (if stock_info table exists)
         try {
-            $sql = "SELECT company_id FROM {$this->db_schema}.stock_info WHERE ticker = :ticker LIMIT 1";
+            $sql = "SELECT company_id
+                    FROM {$this->db_schema}.stock_info
+                    WHERE UPPER(TRIM(ticker)) = UPPER(TRIM(:ticker))
+                    LIMIT 1";
             $st = $this->pdo()->prepare($sql);
-            $st->execute([':ticker' => $ticker]);
+            $st->execute([':ticker' => strtoupper(trim($ticker))]);
             $result = $st->fetch();
 
             if ($result) {
@@ -501,19 +508,19 @@ SQL;
         $tblCo = $wpdb->prefix . 'stock_company_info';
 
         $sql = "
-        SELECT c.id as company_id 
-        FROM {$tblCo} c 
-        JOIN {$tblTi} t ON t.id = c.ticker_id 
-        WHERE t.symbol = %s 
-        LIMIT 1
-    ";
+                SELECT c.id as company_id
+                FROM {$tblCo} c
+                JOIN {$tblTi} t ON t.id = c.ticker_id
+                WHERE UPPER(TRIM(t.symbol)) = UPPER(TRIM(%s))
+                LIMIT 1
+            ";
 
         $result = $wpdb->get_var($wpdb->prepare($sql, $ticker));
         return $result ? (int)$result : null;
     }
 
     /*** REPORTS backfill: all report posts ***/
-    public function cli_backfill_reports($args, $assoc)
+    public function cli_backfill_reports()
     {
         if (defined('WP_CLI')) {
             \WP_CLI::log('Starting reports backfill...');
@@ -540,35 +547,6 @@ SQL;
                 \WP_CLI::warning('No report posts found to backfill.');
             }
             return;
-        }
-
-        // Show sample post structure for debugging
-        $sample_posts = get_posts([
-            'post_type' => $this->cpt_report,
-            'numberposts' => 3,
-            'post_status' => 'any'
-        ]);
-
-        if (!empty($sample_posts) && defined('WP_CLI')) {
-            foreach ($sample_posts as $sample) {
-                \WP_CLI::log("Sample post: ID {$sample->ID} - '{$sample->post_title}'");
-
-                // Show the specific ACF fields we need
-                $research_company = get_field('research_company', $sample->ID);
-                $symbol = get_field('symbol', $sample->ID);
-                $report_date = get_field('report_date', $sample->ID);
-
-                \WP_CLI::log("  research_company: " . print_r($research_company, true));
-                \WP_CLI::log("  symbol: " . print_r($symbol, true));
-                \WP_CLI::log("  report_date: {$report_date}");
-
-                // If symbol is a post ID, show what ticker we can extract
-                $symbol_id = $this->extract_id($symbol);
-                if ($symbol_id) {
-                    $ticker = $this->get_ticker_from_stock_post($symbol_id);
-                    \WP_CLI::log("  extracted ticker: {$ticker}");
-                }
-            }
         }
 
         try {
@@ -702,6 +680,63 @@ SQL;
             // $bar->finish();
             \WP_CLI::success("{$cpt} backfill complete.");
         }
+    }
+
+    public function handle_run_functions_submit()
+    {
+        if (! current_user_can('manage_options')) {
+            wp_die('Unauthorized', 'Unauthorized', 403);
+        }
+        check_admin_referer('activ8_run_functions');
+
+        // Long runners safety
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        ignore_user_abort(true);
+
+        $log    = [];
+        $status = 'ok';
+
+        // Little helper to run a step, capture output, and stop on error
+        $run_step = function (string $label, callable $fn) use (&$log, &$status) {
+            $log[] = "▶ {$label}…";
+            ob_start();
+            try {
+                $result = call_user_func($fn); // your function can echo; we'll capture
+                $buffer = trim(ob_get_clean());
+                if ($buffer !== '') {
+                    foreach (preg_split("/\r\n|\n|\r/", $buffer) as $line) {
+                        $log[] = "   " . $line;
+                    }
+                }
+                $log[] = "   {$label} complete.";
+                return true;
+            } catch (\Throwable $e) {
+                ob_end_clean();
+                $log[] = "   [ERR] {$e->getMessage()}";
+                $status = 'fail';
+                return false;
+            }
+        };
+
+        // IMPORTANT: replace with your actual method names if different.
+        if (!$run_step('Backfill Researchers', function () {
+            $this->cli_backfill_researchers();
+        })) goto end;
+        if (!$run_step('Backfill Stocks',      function () {
+            $this->cli_backfill_stocks();
+        }))      goto end;
+        if (!$run_step('Backfill Reports',     function () {
+            $this->cli_backfill_reports();
+        }))     goto end;
+
+        end:
+        set_transient('activ8_backfill_log', $log, MINUTE_IN_SECONDS * 30);
+
+        // Send user back to your settings page (adjust page slug to match yours)
+        $url = add_query_arg('activ8_backfill_status', $status, admin_url('admin.php?page=stock-data-plugin'));
+        wp_safe_redirect($url);
+        exit;
     }
 }
 

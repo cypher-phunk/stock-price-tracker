@@ -79,506 +79,538 @@ if (isset($_GET['test_xdebug'])) {
     }
     ?>
 
-    <!-- TMDB API Key Settings -->
-    <form method="post" action="">
-        <?php wp_nonce_field('sdp_save_tmdb_api_key', 'sdp_tmdb_api_key_nonce'); ?>
-        <input type="hidden" name="action" value="save_api_key" />
-        <p class="description">Make sure to save your API key before using the TMDB features.</p>
-        <table class="form-table">
-            <tr valign="top">
-                <th scope="row">TMDB API Key</th>
-                <td>
-                    <?php
-                    $tmdb_api_key = sdp_get_tmdb_api_key();
-                    $display_key = '';
-                    if (!empty($tmdb_api_key)) {
-                        $display_key = substr($tmdb_api_key, 0, 4) . str_repeat('*', max(0, strlen($tmdb_api_key) - 4));
-                    }
-                    ?>
-                    <input type="text" name="sdp_tmdb_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
-                    <p class="description">Your API key from <a href="https://www.themoviedb.org/documentation/api" target="_blank">TMDB</a>. Keep this key secure.</p>
-                </td>
-            </tr>
-        </table>
-        <?php submit_button('Save API Key'); ?>
-    </form>
-
+    <!-- Backfill Postgres Data -->
+    <h2>Backfill Postgres Data</h2>
     <?php
-    // Handle TMDB API Key submission
-    if (isset($_POST['sdp_tmdb_api_key_nonce']) && wp_verify_nonce($_POST['sdp_tmdb_api_key_nonce'], 'sdp_save_tmdb_api_key')) {
-        $tmdb_api_key = sanitize_text_field($_POST['sdp_tmdb_api_key']);
-        if (sdp_save_tmdb_api_key($tmdb_api_key)) {
-            echo '<div class="updated"><p>TMDB API Key saved successfully.</p></div>';
-        } else {
-            echo '<div class="error"><p>Failed to save TMDB API Key.</p></div>';
-        }
-    }
-
-    // Podcast Index API Key Settings
-    sdp_podindex_api_key_settings_page();
+    $nonce    = wp_create_nonce('activ8_run_functions');
+    $last_log = get_transient('activ8_backfill_log'); // array of lines set by handler
     ?>
+    <div class="wrap">
+        <h1>Activ8 Backfills</h1>
+        <p>Runs your functions in order: Researchers → Stocks → Reports.</p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="activ8_run_functions">
+            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>">
+            <button type="submit" class="button button-primary" style="display: inline-flex; align-items: center; gap: 6px; background-color: #EC5800; border-color: #EC5800;">
+                <img src="<?php echo esc_url(get_site_url() . '/wp-content/uploads/2025/11/butt-white-svgrepo.svg'); ?>" alt="" style="width: 25px; height: 25px;" />
+                Run Backfills
+            </button>
+        </form>
 
-    <!-- Ag Charts API Key -->
-    <form method="post" action="">
-        <?php wp_nonce_field('sdp_save_ag_charts_api_key', 'sdp_ag_charts_api_key_nonce'); ?>
-        <input type="hidden" name="action" value="save_api_key" />
-        <p class="description">Make sure to save your API key before using the Ag Charts features.</p>
-        <table class="form-table">
-            <tr valign="top">
-                <th scope="row">Ag Charts API Key</th>
-                <td>
-                    <?php
-                    $ag_api_manager = new SDP_AG_API_Manager();
-                    $ag_charts_api_key = $ag_api_manager->get_api_key();
-                    $display_key = '';
-                    if (!empty($ag_charts_api_key)) {
-                        $display_key = substr($ag_charts_api_key, 0, 4) . str_repeat('*', max(0, strlen($ag_charts_api_key) - 4));
-                    }
-                    ?>
-                    <input type="text" name="sdp_ag_charts_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
-                    <p class="description">Your API key from <a href="https://www.ag-charts.com/documentation/api" target="_blank">Ag Charts</a>. Keep this key secure.</p>
-                </td>
-            </tr>
-        </table>
-        <?php submit_button('Save API Key'); ?>
-    </form>
-    <?php
 
-    // Handle Ag Charts API Key submission
-    if (isset($_POST['sdp_ag_charts_api_key_nonce']) && wp_verify_nonce($_POST['sdp_ag_charts_api_key_nonce'], 'sdp_save_ag_charts_api_key')) {
-        $ag_charts_api_key = sanitize_text_field($_POST['sdp_ag_charts_api_key']);
-        $ag_api_manager->set_api_key($ag_charts_api_key);
-        echo '<div class="updated"><p>Ag Charts API Key saved successfully.</p></div>';
-    }
+    <?php if (!empty($_GET['activ8_backfill_status'])): ?>
+        <p style="margin-top:12px;">
+            <strong>Status:</strong>
+            <?php echo $_GET['activ8_backfill_status'] === 'ok' ? 'Done ✓' : 'Failed ✗'; ?>
+        </p>
+    <?php endif; ?>
 
-    // Postgres DB settings
-    ?>
-    <h2>Postgres DB Settings</h2>
-    <form method="post" action="">
-        <?php wp_nonce_field('sdp_save_postgres_db_settings', 'sdp_postgres_db_settings_nonce'); ?>
-        <input type="hidden" name="action" value="save_postgres_db_settings" />
-        <table class="form-table">
-            <tr valign="top">
-                <th scope="row">Host</th>
-                <td><input type="text" name="sdp_postgres_host" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_host'))); ?>" size="50" required /></td>
-            </tr>
-            <tr valign="top">
-                <th scope="row">Port</th>
-                <td><input type="text" name="sdp_postgres_port" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_port'))); ?>" size="50" required /></td>
-            </tr>
-            <tr valign="top">
-                <th scope="row">Database</th>
-                <td><input type="text" name="sdp_postgres_db" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_db'))); ?>" size="50" required /></td>
-            </tr>
-            <tr valign="top">
-                <th scope="row">Schema</th>
-                <td><input type="text" name="sdp_postgres_schema" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_schema'))); ?>" size="50" required /></td>
-            </tr>
-            <tr valign="top">
-                <th scope="row">User</th>
-                <td><input type="text" name="sdp_postgres_user" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_user'))); ?>" size="50" required /></td>
-            </tr>
-            <tr valign="top">
-                <th scope="row">Password</th>
-                <td><input type="password" name="sdp_postgres_password" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_password'))); ?>" size="50" required /></td>
-            </tr>
-        </table>
-        <?php submit_button('Save Postgres DB Settings'); ?>
-    </form>
+    <?php if (is_array($last_log) && $last_log): ?>
+        <pre style="margin-top:12px; max-height:420px; overflow:auto; background:#111; color:#eee; padding:12px;">
+    <?php echo esc_html(implode("\n", $last_log)); ?>
+        </pre>
+    <?php endif; ?>
+</div>
 
-    <?php
-    // Encrypt the settings
-    if (isset($_POST['sdp_postgres_db_settings_nonce']) && wp_verify_nonce($_POST['sdp_postgres_db_settings_nonce'], 'sdp_save_postgres_db_settings')) {
-        $encrypted_host    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_host']));
-        $encrypted_port    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_port']));
-        $encrypted_db      = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_db']));
-        $encrypted_schema  = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_schema']));
-        $encrypted_user    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_user']));
-        $encrypted_password = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_password']));
-        // define all of the keys
-        update_option('sdp_postgres_host', $encrypted_host);
-        update_option('sdp_postgres_port', $encrypted_port);
-        update_option('sdp_postgres_db', $encrypted_db);
-        update_option('sdp_postgres_schema', $encrypted_schema);
-        update_option('sdp_postgres_user', $encrypted_user);
-        update_option('sdp_postgres_password', $encrypted_password);
+<!-- TMDB API Key Settings -->
+<form method="post" action="">
+    <?php wp_nonce_field('sdp_save_tmdb_api_key', 'sdp_tmdb_api_key_nonce'); ?>
+    <input type="hidden" name="action" value="save_api_key" />
+    <table class="form-table">
+        <tr valign="top">
+            <th scope="row">TMDB API Key</th>
+            <td>
+                <?php
+                $tmdb_api_key = sdp_get_tmdb_api_key();
+                $display_key = '';
+                if (!empty($tmdb_api_key)) {
+                    $display_key = substr($tmdb_api_key, 0, 4) . str_repeat('*', max(0, strlen($tmdb_api_key) - 4));
+                }
+                ?>
+                <input type="text" name="sdp_tmdb_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
+                <p class="description">Your API key from <a href="https://www.themoviedb.org/documentation/api" target="_blank">TMDB</a>. Keep this key secure.</p>
+            </td>
+        </tr>
+    </table>
+    <?php submit_button('Save API Key'); ?>
+</form>
 
-        echo '<div class="updated"><p>Postgres DB Settings saved successfully.</p></div>';
-    }
-
-    // 1. Check PostgreSQL extension
-    if (!extension_loaded('pgsql')) {
-        echo '<div class="error"><p>PostgreSQL extension is not loaded in PHP</p></div>';
-        return;
-    }
-    echo '<div class="updated"><p>PostgreSQL extension is loaded</p></div>';
-
-    // 2. Build and test connection string
-    $host = sdp_decrypt_api_key(get_option('sdp_postgres_host'));
-    $port = sdp_decrypt_api_key(get_option('sdp_postgres_port'));
-    $dbname = sdp_decrypt_api_key(get_option('sdp_postgres_db'));
-    $user = sdp_decrypt_api_key(get_option('sdp_postgres_user'));
-    $password = sdp_decrypt_api_key(get_option('sdp_postgres_password'));
-
-    // 3. Test network connectivity first
-    $socket = @fsockopen($host, $port, $errno, $errstr, 10);
-    if ($socket) {
-        echo '<div class="updated"><p>Network connection to ' . esc_html($host) . ':' . esc_html($port) . ' successful</p></div>';
-        fclose($socket);
+<?php
+// Handle TMDB API Key submission
+if (isset($_POST['sdp_tmdb_api_key_nonce']) && wp_verify_nonce($_POST['sdp_tmdb_api_key_nonce'], 'sdp_save_tmdb_api_key')) {
+    $tmdb_api_key = sanitize_text_field($_POST['sdp_tmdb_api_key']);
+    if (sdp_save_tmdb_api_key($tmdb_api_key)) {
+        echo '<div class="updated"><p>TMDB API Key saved successfully.</p></div>';
     } else {
-        echo '<div class="error"><p>Cannot reach ' . esc_html($host) . ':' . esc_html($port) . ' - Error ' . $errno . ': ' . esc_html($errstr) . '</p></div>';
-        return; // Stop here if we can't even reach the server
+        echo '<div class="error"><p>Failed to save TMDB API Key.</p></div>';
+    }
+}
+
+// Podcast Index API Key Settings
+sdp_podindex_api_key_settings_page();
+?>
+
+<!-- Ag Charts API Key -->
+<form method="post" action="">
+    <?php wp_nonce_field('sdp_save_ag_charts_api_key', 'sdp_ag_charts_api_key_nonce'); ?>
+    <input type="hidden" name="action" value="save_api_key" />
+    <p class="description">Make sure to save your API key before using the Ag Charts features.</p>
+    <table class="form-table">
+        <tr valign="top">
+            <th scope="row">Ag Charts API Key</th>
+            <td>
+                <?php
+                $ag_api_manager = new SDP_AG_API_Manager();
+                $ag_charts_api_key = $ag_api_manager->get_api_key();
+                $display_key = '';
+                if (!empty($ag_charts_api_key)) {
+                    $display_key = substr($ag_charts_api_key, 0, 4) . str_repeat('*', max(0, strlen($ag_charts_api_key) - 4));
+                }
+                ?>
+                <input type="text" name="sdp_ag_charts_api_key" value="<?php echo esc_attr($display_key); ?>" size="50" required />
+                <p class="description">Your API key from <a href="https://www.ag-charts.com/documentation/api" target="_blank">Ag Charts</a>. Keep this key secure.</p>
+            </td>
+        </tr>
+    </table>
+    <?php submit_button('Save API Key'); ?>
+</form>
+<?php
+
+// Handle Ag Charts API Key submission
+if (isset($_POST['sdp_ag_charts_api_key_nonce']) && wp_verify_nonce($_POST['sdp_ag_charts_api_key_nonce'], 'sdp_save_ag_charts_api_key')) {
+    $ag_charts_api_key = sanitize_text_field($_POST['sdp_ag_charts_api_key']);
+    $ag_api_manager->set_api_key($ag_charts_api_key);
+    echo '<div class="updated"><p>Ag Charts API Key saved successfully.</p></div>';
+}
+
+// Postgres DB settings
+?>
+<h2>Postgres DB Settings</h2>
+<form method="post" action="">
+    <?php wp_nonce_field('sdp_save_postgres_db_settings', 'sdp_postgres_db_settings_nonce'); ?>
+    <input type="hidden" name="action" value="save_postgres_db_settings" />
+    <table class="form-table">
+        <tr valign="top">
+            <th scope="row">Host</th>
+            <td><input type="text" name="sdp_postgres_host" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_host'))); ?>" size="50" required /></td>
+        </tr>
+        <tr valign="top">
+            <th scope="row">Port</th>
+            <td><input type="text" name="sdp_postgres_port" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_port'))); ?>" size="50" required /></td>
+        </tr>
+        <tr valign="top">
+            <th scope="row">Database</th>
+            <td><input type="text" name="sdp_postgres_db" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_db'))); ?>" size="50" required /></td>
+        </tr>
+        <tr valign="top">
+            <th scope="row">Schema</th>
+            <td><input type="text" name="sdp_postgres_schema" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_schema'))); ?>" size="50" required /></td>
+        </tr>
+        <tr valign="top">
+            <th scope="row">User</th>
+            <td><input type="text" name="sdp_postgres_user" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_user'))); ?>" size="50" required /></td>
+        </tr>
+        <tr valign="top">
+            <th scope="row">Password</th>
+            <td><input type="password" name="sdp_postgres_password" value="<?php echo esc_attr(sdp_decrypt_api_key(get_option('sdp_postgres_password'))); ?>" size="50" required /></td>
+        </tr>
+    </table>
+    <?php submit_button('Save Postgres DB Settings'); ?>
+</form>
+
+<?php
+// Encrypt the settings
+if (isset($_POST['sdp_postgres_db_settings_nonce']) && wp_verify_nonce($_POST['sdp_postgres_db_settings_nonce'], 'sdp_save_postgres_db_settings')) {
+    $encrypted_host    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_host']));
+    $encrypted_port    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_port']));
+    $encrypted_db      = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_db']));
+    $encrypted_schema  = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_schema']));
+    $encrypted_user    = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_user']));
+    $encrypted_password = sdp_encrypt_api_key(sanitize_text_field($_POST['sdp_postgres_password']));
+    // define all of the keys
+    update_option('sdp_postgres_host', $encrypted_host);
+    update_option('sdp_postgres_port', $encrypted_port);
+    update_option('sdp_postgres_db', $encrypted_db);
+    update_option('sdp_postgres_schema', $encrypted_schema);
+    update_option('sdp_postgres_user', $encrypted_user);
+    update_option('sdp_postgres_password', $encrypted_password);
+
+    echo '<div class="updated"><p>Postgres DB Settings saved successfully.</p></div>';
+}
+
+// 1. Check PostgreSQL extension
+if (!extension_loaded('pgsql')) {
+    echo '<div class="error"><p>PostgreSQL extension is not loaded in PHP</p></div>';
+    return;
+}
+echo '<div class="updated"><p>PostgreSQL extension is loaded</p></div>';
+
+// 2. Build and test connection string
+$host = sdp_decrypt_api_key(get_option('sdp_postgres_host'));
+$port = sdp_decrypt_api_key(get_option('sdp_postgres_port'));
+$dbname = sdp_decrypt_api_key(get_option('sdp_postgres_db'));
+$user = sdp_decrypt_api_key(get_option('sdp_postgres_user'));
+$password = sdp_decrypt_api_key(get_option('sdp_postgres_password'));
+
+// 3. Test network connectivity first
+$socket = @fsockopen($host, $port, $errno, $errstr, 10);
+if ($socket) {
+    echo '<div class="updated"><p>Network connection to ' . esc_html($host) . ':' . esc_html($port) . ' successful</p></div>';
+    fclose($socket);
+} else {
+    echo '<div class="error"><p>Cannot reach ' . esc_html($host) . ':' . esc_html($port) . ' - Error ' . $errno . ': ' . esc_html($errstr) . '</p></div>';
+    return; // Stop here if we can't even reach the server
+}
+
+// 4. Try connection with proper error handling
+$conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode=require";
+
+// Show connection string for debugging (hide password)
+$debug_string = "host={$host} port={$port} dbname={$dbname} user={$user} password=*** sslmode=require";
+echo '<div class="updated"><p>Attempting connection with: ' . esc_html($debug_string) . '</p></div>';
+
+// Clear any previous errors
+error_clear_last();
+
+// Attempt connection
+$connection = @pg_connect($conn_string);
+
+if ($connection) {
+    echo '<div class="updated"><p>PostgreSQL connection successful!</p></div>';
+    pg_close($connection);
+} else {
+    // Get PHP error if available
+    $php_error = error_get_last();
+    if ($php_error && (strpos($php_error['message'], 'pg_connect') !== false)) {
+        echo '<div class="error"><p>Connection failed - PHP Error: ' . esc_html($php_error['message']) . '</p></div>';
+    } else {
+        echo '<div class="error"><p>Connection failed - Unknown error (no connection resource created)</p></div>';
     }
 
-    // 4. Try connection with proper error handling
-    $conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode=require";
+    // Try different SSL modes
+    $ssl_modes = ['disable', 'prefer', 'require'];
+    foreach ($ssl_modes as $ssl_mode) {
+        $test_conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode={$ssl_mode}";
+        $test_connection = @pg_connect($test_conn_string);
 
-    // Show connection string for debugging (hide password)
-    $debug_string = "host={$host} port={$port} dbname={$dbname} user={$user} password=*** sslmode=require";
-    echo '<div class="updated"><p>Attempting connection with: ' . esc_html($debug_string) . '</p></div>';
-
-    // Clear any previous errors
-    error_clear_last();
-
-    // Attempt connection
-    $connection = @pg_connect($conn_string);
-
-    if ($connection) {
-        echo '<div class="updated"><p>PostgreSQL connection successful!</p></div>';
-        pg_close($connection);
-    } else {
-        // Get PHP error if available
-        $php_error = error_get_last();
-        if ($php_error && (strpos($php_error['message'], 'pg_connect') !== false)) {
-            echo '<div class="error"><p>Connection failed - PHP Error: ' . esc_html($php_error['message']) . '</p></div>';
+        if ($test_connection) {
+            echo '<div class="updated"><p>SUCCESS: Connection worked with sslmode=' . esc_html($ssl_mode) . '</p></div>';
+            pg_close($test_connection);
+            break;
         } else {
-            echo '<div class="error"><p>Connection failed - Unknown error (no connection resource created)</p></div>';
-        }
-
-        // Try different SSL modes
-        $ssl_modes = ['disable', 'prefer', 'require'];
-        foreach ($ssl_modes as $ssl_mode) {
-            $test_conn_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode={$ssl_mode}";
-            $test_connection = @pg_connect($test_conn_string);
-
-            if ($test_connection) {
-                echo '<div class="updated"><p>SUCCESS: Connection worked with sslmode=' . esc_html($ssl_mode) . '</p></div>';
-                pg_close($test_connection);
-                break;
+            $test_error = error_get_last();
+            if ($test_error && (strpos($test_error['message'], 'pg_connect') !== false)) {
+                echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': ' . esc_html($test_error['message']) . '</p></div>';
             } else {
-                $test_error = error_get_last();
-                if ($test_error && (strpos($test_error['message'], 'pg_connect') !== false)) {
-                    echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': ' . esc_html($test_error['message']) . '</p></div>';
-                } else {
-                    echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': No detailed error available</p></div>';
-                }
+                echo '<div class="error"><p>Failed with sslmode=' . esc_html($ssl_mode) . ': No detailed error available</p></div>';
             }
         }
     }
-    echo '<div class="updated"><p>OpenSSL loaded: ' . (extension_loaded('openssl') ? 'Yes' : 'No') . '</p></div>';
-    echo '<div class="updated"><p>PHP Version: ' . PHP_VERSION . '</p></div>';
+}
+echo '<div class="updated"><p>OpenSSL loaded: ' . (extension_loaded('openssl') ? 'Yes' : 'No') . '</p></div>';
+echo '<div class="updated"><p>PHP Version: ' . PHP_VERSION . '</p></div>';
 
-    // Search on Internal Stock DB
-    ?>
-    <h2>Live Stock Symbol Search</h2>
-    <input type="text" id="ticker-search" placeholder="Search stock symbol..." />
-    <div id="results"></div>
+// Search on Internal Stock DB
+?>
+<h2>Live Stock Symbol Search</h2>
+<input type="text" id="ticker-search" placeholder="Search stock symbol..." />
+<div id="results"></div>
 
-    <!-- Refresh Tickers Database -->
-    <h2>Refresh Internal Tickers Database V1</h2>
-    <form method="post">
-        <?php wp_nonce_field('refresh_tickers_action', 'refresh_tickers_nonce'); ?>
-        <p>Click the button below to refresh the internal tickers database.</p>
-        <p>Caution: This will cost about 50 API Queries. Only need to run when your ticker is not here, but is on MarketStack</p>
-        <?php submit_button('Refresh Tickers Database'); ?>
-    </form>
+<!-- Refresh Tickers Database -->
+<h2>Refresh Internal Tickers Database V1</h2>
+<form method="post">
+    <?php wp_nonce_field('refresh_tickers_action', 'refresh_tickers_nonce'); ?>
+    <p>Click the button below to refresh the internal tickers database.</p>
+    <p>Caution: This will cost about 50 API Queries. Only need to run when your ticker is not here, but is on MarketStack</p>
+    <?php submit_button('Refresh Tickers Database'); ?>
+</form>
 
-    <?php
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['refresh_tickers_nonce'])) {
-        if (wp_verify_nonce($_POST['refresh_tickers_nonce'], 'refresh_tickers_action')) {
-            // Delete existing cached tickers
-            delete_transient('sdp_marketstack_tickers');
+<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['refresh_tickers_nonce'])) {
+    if (wp_verify_nonce($_POST['refresh_tickers_nonce'], 'refresh_tickers_action')) {
+        // Delete existing cached tickers
+        delete_transient('sdp_marketstack_tickers');
 
-            global $wpdb;
+        global $wpdb;
 
+        $api_handler = new SDP_API_Handler();
+        $tickers = $api_handler->fetch_marketstack_tickers();
+
+        // Check for errors
+        if (is_wp_error($tickers)) {
+            echo '<div class="error"><p>Error refreshing tickers: ' .
+                esc_html($tickers->get_error_message()) . '</p></div>';
+            return;
+        }
+        // Validate tickers
+        if (empty($tickers)) {
+            echo '<div class="error"><p>No tickers were retrieved from Marketstack.</p></div>';
+            return;
+        }
+
+        // Clear existing tickers in db
+        $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}market_tickers");
+
+        // Insert new tickers
+        $insert_count = 0;
+        foreach ($tickers as $ticker) {
+            // Use 'ticker' instead of 'symbol'
+            if (isset($ticker['ticker'])) {
+                $wpdb->insert("{$wpdb->prefix}market_tickers", [
+                    'symbol' => $ticker['ticker'],
+                ]);
+                $insert_count++;
+            }
+        }
+
+        echo '<div class="updated"><p>Tickers refreshed successfully! Inserted ' .
+            esc_html($insert_count) . ' tickers.</p></div>';
+    }
+}
+?>
+
+<h3>Check & Add Tracked Tickers</h3>
+<textarea id="bulk-tickers" rows="3" placeholder="Enter symbols like: AAPL,TSLA,AI"></textarea>
+<br>
+<button id="check-tickers" class="button button-primary">Check Tickers</button>
+
+<div id="check-results"></div>
+
+<h3>Currently Tracked Tickers</h3>
+<table id="tracked-ticker-table">
+    <thead>
+        <tr>
+            <th>Symbol</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div id="pagination-controls"></div>
+
+<div>
+    <!-- Add all ticker posts here -->
+    <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALL Ticker Posts***</button>
+</div>
+
+<!-- Force Ticker Into market_tickers Database -->
+<h3>Force Ticker Into market_tickers Database</h3>
+<form method="post">
+    <?php wp_nonce_field('force_ticker_action', 'force_ticker_nonce'); ?>
+    <p>Enter the ticker symbol to force into the database:</p>
+    <input type="text" name="force_ticker_symbol" required />
+    <?php submit_button('Force Ticker'); ?>
+</form>
+
+<?php
+// Handle Force Ticker
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['force_ticker_nonce'])) {
+    if (wp_verify_nonce($_POST['force_ticker_nonce'], 'force_ticker_action')) {
+        $symbol = strtoupper(sanitize_text_field($_POST['force_ticker_symbol']));
+
+        global $wpdb;
+
+        // Check if ticker already exists
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}market_tickers WHERE symbol = %s",
+            $symbol
+        ));
+
+        if ($exists) {
+            echo '<div class="error"><p>Ticker already exists: ' . esc_html($symbol) . '</p></div>';
+        } else {
+            if (isset($symbol)) {
+                $wpdb->insert("{$wpdb->prefix}market_tickers", [
+                    'symbol' => $symbol,
+                ]);
+            }
+        }
+    } else {
+        echo '<div class="error"><p>Nonce verification failed.</p></div>';
+    }
+}
+?>
+
+<h2>Manage Tickers</h2>
+
+<form method="post">
+    <?php wp_nonce_field('test_cron_action', 'test_cron_nonce'); ?>
+    <p>Click the button below to test the cron job.</p>
+    <?php submit_button('Test Cron Job'); ?>
+</form>
+<?php
+// Handle Test Cron Job
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_cron_nonce'])) {
+    if (wp_verify_nonce($_POST['test_cron_nonce'], 'test_cron_action')) {
+        if (function_exists('sdp_update_stock_data')) {
+            error_log('Calling sdp_update_stock_data');
+            sdp_update_stock_data(); // <- Put a breakpoint inside this function
+        } else {
+            error_log('Function not found: sdp_update_stock_data');
+        }
+    } else {
+        error_log('Nonce verification failed');
+    }
+}
+?>
+<form method="post">
+    <?php wp_nonce_field('fetch_missing_days_action', 'fetch_missing_days_nonce'); ?>
+    <p>Please select the date range to fetch missing days.</p>
+    <table class="form-table">
+        <tr>
+            <th scope="row">Date From</th>
+            <td>
+                <input type="date" name="date_from" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" required>
+            </td>
+        </tr>
+        <tr>
+            <th scope="row">Date To</th>
+            <td>
+                <input type="date" name="date_to" value="<?php echo date('Y-m-d'); ?>" required>
+            </td>
+        </tr>
+    </table>
+    <p>Click the button below to fetch missing days.</p>
+    <?php submit_button('Fetch Missing Days'); ?>
+</form>
+<?php
+// Handle Fetch Missing Days
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_missing_days_nonce'])) {
+    if (wp_verify_nonce($_POST['fetch_missing_days_nonce'], 'fetch_missing_days_action')) {
+        $date_from = sanitize_text_field($_POST['date_from']);
+        $date_to = sanitize_text_field($_POST['date_to']);
+
+        // Fetch missing days logic here
+        $date_from = isset($_POST['date_from']) ? date('Y-m-d', strtotime($_POST['date_from'])) : date('Y-m-d', strtotime('-999 days'));
+        $date_to   = isset($_POST['date_to']) ? date('Y-m-d', strtotime($_POST['date_to'])) : date('Y-m-d');
+
+        global $wpdb;
+        $tickers = $wpdb->get_results("SELECT id, symbol FROM {$wpdb->prefix}stock_tickers");
+
+        if (empty($tickers)) {
+            echo '<div class="error"><p>No tracked tickers found.</p></div>';
+        } else {
             $api_handler = new SDP_API_Handler();
-            $tickers = $api_handler->fetch_marketstack_tickers();
 
-            // Check for errors
-            if (is_wp_error($tickers)) {
-                echo '<div class="error"><p>Error refreshing tickers: ' .
-                    esc_html($tickers->get_error_message()) . '</p></div>';
-                return;
-            }
-            // Validate tickers
-            if (empty($tickers)) {
-                echo '<div class="error"><p>No tickers were retrieved from Marketstack.</p></div>';
-                return;
-            }
-
-            // Clear existing tickers in db
-            $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}market_tickers");
-
-            // Insert new tickers
-            $insert_count = 0;
             foreach ($tickers as $ticker) {
-                // Use 'ticker' instead of 'symbol'
-                if (isset($ticker['ticker'])) {
-                    $wpdb->insert("{$wpdb->prefix}market_tickers", [
-                        'symbol' => $ticker['ticker'],
-                    ]);
-                    $insert_count++;
-                }
-            }
+                $data = $api_handler->fetch_historical_data($ticker->symbol, $date_from, $date_to);
 
-            echo '<div class="updated"><p>Tickers refreshed successfully! Inserted ' .
-                esc_html($insert_count) . ' tickers.</p></div>';
+                if (is_wp_error($data)) {
+                    error_log("Error for {$ticker->symbol}: " . $data->get_error_message());
+                    continue;
+                }
+
+                foreach ($data as $stock_day) {
+                    $date = date('Y-m-d', strtotime($stock_day['date']));
+
+                    $existing_record = $wpdb->get_row(
+                        $wpdb->prepare(
+                            "SELECT id FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d AND date = %s",
+                            $ticker->id,
+                            $date
+                        )
+                    );
+
+                    if (!$existing_record || !sdp_update_existing_record($ticker->id, $stock_day, $date)) {
+                        sdp_new_record($stock_day, $ticker->id, $date);
+                    }
+
+                    error_log("Saved {$ticker->symbol} - $date");
+                }
+                sleep(.2);
+            }
+            // For example, you can call the API to fetch data for the specified date range
+            error_log("Fetching missing days from $date_from to $date_to");
         }
     }
-    ?>
+}
+?>
 
-    <h3>Check & Add Tracked Tickers</h3>
-    <textarea id="bulk-tickers" rows="3" placeholder="Enter symbols like: AAPL,TSLA,AI"></textarea>
-    <br>
-    <button id="check-tickers" class="button button-primary">Check Tickers</button>
+<form method="post">
+    <?php wp_nonce_field('add_ticker_action', 'add_ticker_nonce'); ?>
 
-    <div id="check-results"></div>
-
-    <h3>Currently Tracked Tickers</h3>
-    <table id="tracked-ticker-table">
-        <thead>
-            <tr>
-                <th>Symbol</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
+    <table class="form-table">
+        <tr>
+            <th scope="row">Ticker Symbols</th>
+            <td>
+                <input type="text" name="ticker_symbols" required placeholder="Example: AAPL,GOOG,MSFT">
+                <p class="description">Enter one or more ticker symbols separated by commas.</p>
+            </td>
+        </tr>
     </table>
 
-    <div id="pagination-controls"></div>
+    <?php submit_button('Add Tickers');
 
-    <div>
-        <!-- Add all ticker posts here -->
-        <button id="add-ticker-posts" class="button button-primary">***DANGER: Add ALL Ticker Posts***</button>
-    </div>
-
-    <!-- Force Ticker Into market_tickers Database -->
-    <h3>Force Ticker Into market_tickers Database</h3>
-    <form method="post">
-        <?php wp_nonce_field('force_ticker_action', 'force_ticker_nonce'); ?>
-        <p>Enter the ticker symbol to force into the database:</p>
-        <input type="text" name="force_ticker_symbol" required />
-        <?php submit_button('Force Ticker'); ?>
-    </form>
-
-    <?php
-    // Handle Force Ticker
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['force_ticker_nonce'])) {
-        if (wp_verify_nonce($_POST['force_ticker_nonce'], 'force_ticker_action')) {
-            $symbol = strtoupper(sanitize_text_field($_POST['force_ticker_symbol']));
-
-            global $wpdb;
-
-            // Check if ticker already exists
-            $exists = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}market_tickers WHERE symbol = %s",
-                $symbol
-            ));
-
-            if ($exists) {
-                echo '<div class="error"><p>Ticker already exists: ' . esc_html($symbol) . '</p></div>';
-            } else {
-                if (isset($symbol)) {
-                    $wpdb->insert("{$wpdb->prefix}market_tickers", [
-                        'symbol' => $symbol,
-                    ]);
-                }
-            }
-        } else {
-            echo '<div class="error"><p>Nonce verification failed.</p></div>';
-        }
-    }
     ?>
+</form>
 
-    <h2>Manage Tickers</h2>
+<h3>Current Tickers</h3>
 
-    <form method="post">
-        <?php wp_nonce_field('test_cron_action', 'test_cron_nonce'); ?>
-        <p>Click the button below to test the cron job.</p>
-        <?php submit_button('Test Cron Job'); ?>
-    </form>
-    <?php
-    // Handle Test Cron Job
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_cron_nonce'])) {
-        if (wp_verify_nonce($_POST['test_cron_nonce'], 'test_cron_action')) {
-            if (function_exists('sdp_update_stock_data')) {
-                error_log('Calling sdp_update_stock_data');
-                sdp_update_stock_data(); // <- Put a breakpoint inside this function
-            } else {
-                error_log('Function not found: sdp_update_stock_data');
-            }
-        } else {
-            error_log('Nonce verification failed');
-        }
-    }
-    ?>
-    <form method="post">
-        <?php wp_nonce_field('fetch_missing_days_action', 'fetch_missing_days_nonce'); ?>
-        <p>Please select the date range to fetch missing days.</p>
-        <table class="form-table">
-            <tr>
-                <th scope="row">Date From</th>
-                <td>
-                    <input type="date" name="date_from" value="<?php echo date('Y-m-d', strtotime('-30 days')); ?>" required>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row">Date To</th>
-                <td>
-                    <input type="date" name="date_to" value="<?php echo date('Y-m-d'); ?>" required>
-                </td>
-            </tr>
-        </table>
-        <p>Click the button below to fetch missing days.</p>
-        <?php submit_button('Fetch Missing Days'); ?>
-    </form>
-    <?php
-    // Handle Fetch Missing Days
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_missing_days_nonce'])) {
-        if (wp_verify_nonce($_POST['fetch_missing_days_nonce'], 'fetch_missing_days_action')) {
-            $date_from = sanitize_text_field($_POST['date_from']);
-            $date_to = sanitize_text_field($_POST['date_to']);
+<?php
+global $wpdb;
 
-            // Fetch missing days logic here
-            $date_from = isset($_POST['date_from']) ? date('Y-m-d', strtotime($_POST['date_from'])) : date('Y-m-d', strtotime('-999 days'));
-            $date_to   = isset($_POST['date_to']) ? date('Y-m-d', strtotime($_POST['date_to'])) : date('Y-m-d');
+// pagination
+$items_per_page = 20;
+$current_page = max(1, isset($_GET['paged']) ? intval($_GET['paged']) : 1);
+$offset = ($current_page - 1) * $items_per_page;
 
-            global $wpdb;
-            $tickers = $wpdb->get_results("SELECT id, symbol FROM {$wpdb->prefix}stock_tickers");
+// total pages
+$total_items = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}stock_tickers");
+$total_pages = ceil($total_items / $items_per_page);
 
-            if (empty($tickers)) {
-                echo '<div class="error"><p>No tracked tickers found.</p></div>';
-            } else {
-                $api_handler = new SDP_API_Handler();
-
-                foreach ($tickers as $ticker) {
-                    $data = $api_handler->fetch_historical_data($ticker->symbol, $date_from, $date_to);
-
-                    if (is_wp_error($data)) {
-                        error_log("Error for {$ticker->symbol}: " . $data->get_error_message());
-                        continue;
-                    }
-
-                    foreach ($data as $stock_day) {
-                        $date = date('Y-m-d', strtotime($stock_day['date']));
-
-                        $existing_record = $wpdb->get_row(
-                            $wpdb->prepare(
-                                "SELECT id FROM {$wpdb->prefix}stock_prices WHERE ticker_id = %d AND date = %s",
-                                $ticker->id,
-                                $date
-                            )
-                        );
-
-                        if (!$existing_record || !sdp_update_existing_record($ticker->id, $stock_day, $date)) {
-                            sdp_new_record($stock_day, $ticker->id, $date);
-                        }
-
-                        error_log("Saved {$ticker->symbol} - $date");
-                    }
-                    sleep(.2);
-                }
-                // For example, you can call the API to fetch data for the specified date range
-                error_log("Fetching missing days from $date_from to $date_to");
-            }
-        }
-    }
-    ?>
-
-    <form method="post">
-        <?php wp_nonce_field('add_ticker_action', 'add_ticker_nonce'); ?>
-
-        <table class="form-table">
-            <tr>
-                <th scope="row">Ticker Symbols</th>
-                <td>
-                    <input type="text" name="ticker_symbols" required placeholder="Example: AAPL,GOOG,MSFT">
-                    <p class="description">Enter one or more ticker symbols separated by commas.</p>
-                </td>
-            </tr>
-        </table>
-
-        <?php submit_button('Add Tickers');
-
-        ?>
-    </form>
-
-    <h3>Current Tickers</h3>
-
-    <?php
-    global $wpdb;
-
-    // pagination
-    $items_per_page = 20;
-    $current_page = max(1, isset($_GET['paged']) ? intval($_GET['paged']) : 1);
-    $offset = ($current_page - 1) * $items_per_page;
-
-    // total pages
-    $total_items = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}stock_tickers");
-    $total_pages = ceil($total_items / $items_per_page);
-
-    // Fetch paginated results without search query
-    $tickers = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}stock_tickers 
+// Fetch paginated results without search query
+$tickers = $wpdb->get_results(
+    $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}stock_tickers 
             ORDER BY symbol ASC 
             LIMIT %d OFFSET %d",
-            $items_per_page,
-            $offset
-        )
-    );
+        $items_per_page,
+        $offset
+    )
+);
 
-    if ($tickers):
-    ?>
-        <table class="widefat fixed striped">
-            <thead>
+if ($tickers):
+?>
+    <table class="widefat fixed striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Symbol</th>
+                <th>Added On</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($tickers as $ticker): ?>
                 <tr>
-                    <th>ID</th>
-                    <th>Symbol</th>
-                    <th>Added On</th>
+                    <td><?php echo esc_html($ticker->id); ?></td>
+                    <td><?php echo esc_html($ticker->symbol); ?></td>
+                    <td><?php echo esc_html($ticker->created_at); ?></td>
                 </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tickers as $ticker): ?>
-                    <tr>
-                        <td><?php echo esc_html($ticker->id); ?></td>
-                        <td><?php echo esc_html($ticker->symbol); ?></td>
-                        <td><?php echo esc_html($ticker->created_at); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 
-        <!-- Pagination Links -->
-        <div class="tablenav">
-            <div class="tablenav-pages">
-                <?php
-                echo paginate_links([
-                    'base' => add_query_arg('paged', '%#%'),
-                    'format' => '',
-                    'prev_text' => __('« Prev'),
-                    'next_text' => __('Next »'),
-                    'total' => $total_pages,
-                    'current' => $current_page
-                ]);
-                ?>
-            </div>
+    <!-- Pagination Links -->
+    <div class="tablenav">
+        <div class="tablenav-pages">
+            <?php
+            echo paginate_links([
+                'base' => add_query_arg('paged', '%#%'),
+                'format' => '',
+                'prev_text' => __('« Prev'),
+                'next_text' => __('Next »'),
+                'total' => $total_pages,
+                'current' => $current_page
+            ]);
+            ?>
         </div>
+    </div>
 
 
-    <?php else: ?>
-        <p>No tickers found. Please add some!</p>
-    <?php endif; ?>
+<?php else: ?>
+    <p>No tickers found. Please add some!</p>
+<?php endif; ?>
 </div>
 
 <!-- View the Historical Data -->
