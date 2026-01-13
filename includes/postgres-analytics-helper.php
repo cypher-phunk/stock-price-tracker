@@ -9,12 +9,26 @@ class SDP_PG
 
     private $cpt_company = 'company';  // researcher source
     private $cpt_report  = 'report';   // report
-    private $db_schema = 'production';    // PostgreSQL schema CHANGE THIS
+    private $db_schema;
+    
+    // if url contains activ8insights, use dashboard schema
+    public function get_db_schema() {
+        if (strpos(site_url(), 'activ8insights') !== false) {
+            
+            return 'production';
+        }
+        return 'localwp';
+    }
 
     // ACF field handles on report posts:
     private $acf_researcher_company = 'researcher_company'; // Post Object to 'company' CPT
     private $acf_company_id         = 'company_id';         // int company_id
     private $acf_report_date        = 'report_date';        // 'Y-m-d'
+
+    private $backfill_state_option = 'activ8_backfill_state';
+    private $backfill_log_transient = 'activ8_backfill_log';
+    private $backfill_lock_transient = 'activ8_backfill_lock';
+    private $backfill_cron_hook = 'activ8_backfill_process';
 
     static function i()
     {
@@ -33,6 +47,8 @@ class SDP_PG
         }
 
         add_action('admin_post_activ8_run_functions', [$this, 'handle_run_functions_submit']);
+        add_action($this->backfill_cron_hook, [$this, 'cron_process_backfill']);
+        $this->db_schema = $this->get_db_schema();
     }
 
 
@@ -71,8 +87,10 @@ class SDP_PG
         if ($post->post_type !== $this->cpt_company) return;
         // do_action('acf/save_post', $post_id); // ensure ACF fields are saved
 
-        // researcher_name: prefer post_title; fall back to post_name if you truly want slug
-        $researcher_name = get_the_title($post_id) ?: $post->post_name;
+        // researcher_name: use raw post_title to avoid WordPress adding "Private:"/"Protected:" prefixes
+        $researcher_name = $post->post_title ?: $post->post_name;
+        $researcher_name = preg_replace('/^(?:Private|Protected):\s*/i', '', $researcher_name);
+        $researcher_name = html_entity_decode($researcher_name, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
         try {
             $sql = <<<SQL
@@ -91,6 +109,11 @@ SQL;
 
     /*** STOCK_INFO: combine wp_stock_company_info + wp_stock_tickers ***/
     public function cli_backfill_stocks()
+    {
+        $this->backfill_stocks_batch(0, 1000000000);
+    }
+
+    private function backfill_stocks_batch(int $offset, int $limit): array
     {
         global $wpdb;
         $tblCo = $wpdb->prefix . 'stock_company_info';
@@ -112,7 +135,7 @@ SQL;
             if (defined('WP_CLI')) {
                 \WP_CLI::warning("No data found in {$tblCo} table. Check table name and data.");
             }
-            return;
+            return ['processed' => 0, 'has_more' => false];
         }
 
         $company_columns = $wpdb->get_results("DESCRIBE {$tblCo}", ARRAY_A);
@@ -123,14 +146,17 @@ SQL;
             \WP_CLI::log("Ticker table columns: " . implode(', ', array_column($ticker_columns, 'Field')));
         }
 
-        $sql = "
-            SELECT c.id as company_id, c.name as company_name, c.industry, c.sector,
-               t.symbol AS ticker
-            FROM {$tblCo} c
-            LEFT JOIN {$tblTi} t ON t.id = c.ticker_id
-            WHERE t.symbol IS NOT NULL AND t.symbol != ''
-            ORDER BY c.id ASC
-        ";
+        $sql = $wpdb->prepare(
+            "SELECT c.id as company_id, c.name as company_name, c.industry, c.sector,
+                    t.symbol AS ticker
+               FROM {$tblCo} c
+               LEFT JOIN {$tblTi} t ON t.id = c.ticker_id
+              WHERE t.symbol IS NOT NULL AND t.symbol != ''
+              ORDER BY c.id ASC
+              LIMIT %d OFFSET %d",
+            $limit,
+            $offset
+        );
 
         if (defined('WP_CLI')) {
             \WP_CLI::log("Executing query: " . preg_replace('/\s+/', ' ', trim($sql)));
@@ -142,7 +168,7 @@ SQL;
             if (defined('WP_CLI')) {
                 \WP_CLI::error("SQL Error: " . $wpdb->last_error);
             }
-            return;
+            return ['processed' => 0, 'has_more' => false];
         }
 
         if (empty($rows)) {
@@ -158,13 +184,14 @@ SQL;
                     }
                 }
             }
-            return;
+            return ['processed' => 0, 'has_more' => false];
         }
 
         //if (defined('WP_CLI')) {
         //    $bar = \WP_CLI\Utils\make_progress_bar('Backfilling stock_info', count($rows));
         //}
 
+        $processed = 0;
         try {
             // Check if the company_id already exists
             $checkSql = "SELECT 1 FROM {$this->db_schema}.stock_info WHERE company_id = :id";
@@ -220,6 +247,8 @@ SQL;
                 if (isset($bar)) {
                     $bar->tick();
                 }
+
+                $processed++;
             }
 
             if (isset($bar)) {
@@ -232,6 +261,9 @@ SQL;
             }
             throw $e;
         }
+
+        $has_more = count($rows) === $limit;
+        return ['processed' => $processed, 'has_more' => $has_more];
     }
 
     /*** RESEARCHERS backfill: all 'company' posts ***/
@@ -264,7 +296,7 @@ SQL;
         $researcher_post_id = get_field('research_company', $post_id); // Post ID of researcher
         $stock_post_id = get_field('symbol', $post_id); // Post ID of stock post
         $report_date = get_field('report_date', $post_id); // Date in m/d/Y format
-        $report_id = get_field('report_id', $post_id); // report Id
+        $report_id = $post_id; // report Id
 
         if (defined('WP_CLI')) {
             \WP_CLI::log("Raw ACF values: researcher_post_id=" . print_r($researcher_post_id, true) . ", stock_post_id=" . print_r($stock_post_id, true) . ", report_date={$report_date}");
@@ -273,8 +305,6 @@ SQL;
         // Extract IDs from ACF objects if needed
         $researcher_id = $this->extract_id($researcher_post_id);
         $stock_id = $this->extract_id($stock_post_id);
-        // Get the ACF 
-        // $stock_pkey = 
 
         if (defined('WP_CLI')) {
             \WP_CLI::log("Processing post {$post_id}: researcher_post={$researcher_id}, stock_post={$stock_id}, date={$report_date}");
@@ -335,6 +365,11 @@ SQL;
             return;
         }
 
+        // Update Report Taxonomy terms
+        // sector, industry, report_type
+        
+        $report_type = get_field('report_type', $post_id);
+
         if (defined('WP_CLI')) {
             \WP_CLI::log("Final data: researcher_id={$researcher_id}, company_id={$company_id}, ticker={$ticker}, date={$formatted_date}");
         }
@@ -342,10 +377,14 @@ SQL;
         // Insert/update in PostgreSQL
         try {
             $sql = <<<SQL
-            INSERT INTO {$this->db_schema}.reports (researcher_id, company_id, reportdts, reportprice_open, reportprice_close, reportprice_prior)
-            VALUES (:rid, :cid, :d, NULL, NULL, NULL)
-            ON CONFLICT (researcher_id, company_id, reportdts)
-            DO NOTHING;
+            INSERT INTO {$this->db_schema}.reports (researcher_id, company_id, reportdts, report_id, updated_at)
+            VALUES (:rid, :cid, :d, :pid, NOW())
+            ON CONFLICT (report_id)
+            DO UPDATE SET
+                researcher_id = EXCLUDED.researcher_id,
+                company_id    = EXCLUDED.company_id,
+                reportdts     = EXCLUDED.reportdts,
+                updated_at    = NOW();
             SQL;
 
             $st = $this->pdo()->prepare($sql);
@@ -353,6 +392,7 @@ SQL;
                 ':rid' => (int)$researcher_id,
                 ':cid' => (int)$company_id,
                 ':d' => $formatted_date,
+                ':pid' => (int)$report_id
             ]);
 
             if ($result) {
@@ -682,6 +722,159 @@ SQL;
         }
     }
 
+    private function backfill_cpt_batch(string $cpt, callable $fn, int $paged, int $per): array
+    {
+        $q = new WP_Query([
+            'post_type' => $cpt,
+            'post_status' => 'any',
+            'posts_per_page' => $per,
+            'paged' => $paged,
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+        ]);
+
+        $processed = 0;
+        if (!empty($q->posts)) {
+            foreach ($q->posts as $p) {
+                $fn($p);
+                $processed++;
+            }
+        }
+
+        wp_reset_postdata();
+
+        $has_more = $processed === $per;
+        return ['processed' => $processed, 'has_more' => $has_more];
+    }
+
+    private function backfill_log_append(string $line): void
+    {
+        $log = get_transient($this->backfill_log_transient);
+        if (!is_array($log)) $log = [];
+        $log[] = $line;
+        set_transient($this->backfill_log_transient, $log, MINUTE_IN_SECONDS * 30);
+    }
+
+    private function backfill_state_get(): array
+    {
+        $state = get_option($this->backfill_state_option);
+        return is_array($state) ? $state : [];
+    }
+
+    private function backfill_state_set(array $state): void
+    {
+        update_option($this->backfill_state_option, $state, false);
+    }
+
+    private function backfill_schedule_next(int $delay_seconds = 5): void
+    {
+        if (!wp_next_scheduled($this->backfill_cron_hook)) {
+            wp_schedule_single_event(time() + max(1, $delay_seconds), $this->backfill_cron_hook);
+        }
+    }
+
+    private function start_backfill_job(): void
+    {
+        delete_transient($this->backfill_log_transient);
+
+        $state = [
+            'status' => 'running',
+            'step' => 'researchers',
+            'cpt_paged' => 1,
+            'cpt_per' => 50,
+            'stocks_offset' => 0,
+            'stocks_per' => 200,
+            'started_at' => time(),
+            'updated_at' => time(),
+        ];
+        $this->backfill_state_set($state);
+
+        $this->backfill_log_append('▶ Backfill queued…');
+        $this->backfill_schedule_next(1);
+    }
+
+    public function cron_process_backfill(): void
+    {
+        if (get_transient($this->backfill_lock_transient)) {
+            $this->backfill_schedule_next(10);
+            return;
+        }
+
+        set_transient($this->backfill_lock_transient, 1, MINUTE_IN_SECONDS * 5);
+
+        try {
+            $state = $this->backfill_state_get();
+            if (($state['status'] ?? '') !== 'running') {
+                return;
+            }
+
+            $deadline = time() + 20;
+
+            while (time() < $deadline && (($state['status'] ?? '') === 'running')) {
+                $step = $state['step'] ?? 'researchers';
+
+                if ($step === 'researchers') {
+                    $res = $this->backfill_cpt_batch($this->cpt_company, function ($p) {
+                        $this->on_save_company($p->ID, $p, true);
+                    }, (int)$state['cpt_paged'], (int)$state['cpt_per']);
+
+                    $this->backfill_log_append("Researchers batch: {$res['processed']} (page {$state['cpt_paged']})");
+
+                    if ($res['has_more']) {
+                        $state['cpt_paged'] = (int)$state['cpt_paged'] + 1;
+                    } else {
+                        $state['step'] = 'stocks';
+                        $state['cpt_paged'] = 1;
+                        $this->backfill_log_append('✔ Backfill Researchers complete.');
+                    }
+                } elseif ($step === 'stocks') {
+                    $res = $this->backfill_stocks_batch((int)$state['stocks_offset'], (int)$state['stocks_per']);
+                    $this->backfill_log_append("Stocks batch: {$res['processed']} (offset {$state['stocks_offset']})");
+
+                    if ($res['has_more']) {
+                        $state['stocks_offset'] = (int)$state['stocks_offset'] + (int)$state['stocks_per'];
+                    } else {
+                        $state['step'] = 'reports';
+                        $state['cpt_paged'] = 1;
+                        $this->backfill_log_append('✔ Backfill Stocks complete.');
+                    }
+                } else {
+                    $res = $this->backfill_cpt_batch($this->cpt_report, function ($p) {
+                        $this->on_save_report($p->ID, $p, true);
+                    }, (int)$state['cpt_paged'], (int)$state['cpt_per']);
+
+                    $this->backfill_log_append("Reports batch: {$res['processed']} (page {$state['cpt_paged']})");
+
+                    if ($res['has_more']) {
+                        $state['cpt_paged'] = (int)$state['cpt_paged'] + 1;
+                    } else {
+                        $state['status'] = 'done';
+                        $state['finished_at'] = time();
+                        $this->backfill_log_append('✔ Backfill Reports complete.');
+                        $this->backfill_log_append('✅ Backfill finished.');
+                    }
+                }
+
+                $state['updated_at'] = time();
+                $this->backfill_state_set($state);
+            }
+
+            if (($state['status'] ?? '') === 'running') {
+                $this->backfill_schedule_next(5);
+            }
+        } catch (\Throwable $e) {
+            $state = $this->backfill_state_get();
+            $state['status'] = 'fail';
+            $state['error'] = $e->getMessage();
+            $state['updated_at'] = time();
+            $this->backfill_state_set($state);
+            $this->backfill_log_append('   [ERR] ' . $e->getMessage());
+        } finally {
+            delete_transient($this->backfill_lock_transient);
+        }
+    }
+
     public function handle_run_functions_submit()
     {
         if (! current_user_can('manage_options')) {
@@ -689,52 +882,9 @@ SQL;
         }
         check_admin_referer('activ8_run_functions');
 
-        // Long runners safety
-        @set_time_limit(0);
-        @ini_set('memory_limit', '1024M');
-        ignore_user_abort(true);
+        $this->start_backfill_job();
 
-        $log    = [];
-        $status = 'ok';
-
-        // Little helper to run a step, capture output, and stop on error
-        $run_step = function (string $label, callable $fn) use (&$log, &$status) {
-            $log[] = "▶ {$label}…";
-            ob_start();
-            try {
-                $result = call_user_func($fn); // your function can echo; we'll capture
-                $buffer = trim(ob_get_clean());
-                if ($buffer !== '') {
-                    foreach (preg_split("/\r\n|\n|\r/", $buffer) as $line) {
-                        $log[] = "   " . $line;
-                    }
-                }
-                $log[] = "   {$label} complete.";
-                return true;
-            } catch (\Throwable $e) {
-                ob_end_clean();
-                $log[] = "   [ERR] {$e->getMessage()}";
-                $status = 'fail';
-                return false;
-            }
-        };
-
-        // IMPORTANT: replace with your actual method names if different.
-        if (!$run_step('Backfill Researchers', function () {
-            $this->cli_backfill_researchers();
-        })) goto end;
-        if (!$run_step('Backfill Stocks',      function () {
-            $this->cli_backfill_stocks();
-        }))      goto end;
-        if (!$run_step('Backfill Reports',     function () {
-            $this->cli_backfill_reports();
-        }))     goto end;
-
-        end:
-        set_transient('activ8_backfill_log', $log, MINUTE_IN_SECONDS * 30);
-
-        // Send user back to your settings page (adjust page slug to match yours)
-        $url = add_query_arg('activ8_backfill_status', $status, admin_url('admin.php?page=stock-data-plugin'));
+        $url = add_query_arg('activ8_backfill_status', 'queued', admin_url('admin.php?page=stock-data-plugin'));
         wp_safe_redirect($url);
         exit;
     }

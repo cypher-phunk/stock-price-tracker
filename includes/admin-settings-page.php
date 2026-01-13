@@ -101,7 +101,18 @@ if (isset($_GET['test_xdebug'])) {
     <?php if (!empty($_GET['activ8_backfill_status'])): ?>
         <p style="margin-top:12px;">
             <strong>Status:</strong>
-            <?php echo $_GET['activ8_backfill_status'] === 'ok' ? 'Done ✓' : 'Failed ✗'; ?>
+            <?php
+            $st = sanitize_text_field($_GET['activ8_backfill_status']);
+            if ($st === 'queued') {
+                echo 'Queued…';
+            } elseif ($st === 'running') {
+                echo 'Running…';
+            } elseif ($st === 'done' || $st === 'ok') {
+                echo 'Done ✓';
+            } else {
+                echo 'Failed ✗';
+            }
+            ?>
         </p>
     <?php endif; ?>
 

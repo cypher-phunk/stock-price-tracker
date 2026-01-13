@@ -120,12 +120,14 @@ require_once(SDP_PLUGIN_PATH . 'includes/podcast-index-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/open-library-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/open-library-api-handler.php');
 require_once(SDP_PLUGIN_PATH . 'includes/grids.php');
+require_once(SDP_PLUGIN_PATH . 'includes/datatables/recent-short-reports.php');
 require_once(SDP_PLUGIN_PATH . 'includes/ag-api-manager.php');
 require_once(SDP_PLUGIN_PATH . 'includes/taxonomy.php');
 require_once(SDP_PLUGIN_PATH . 'includes/register-taxonomy.php');
 // TODO Reimplement the Postgres analytics helper later.
 require_once(SDP_PLUGIN_PATH . 'includes/postgres-analytics-helper.php');
 require_once(SDP_PLUGIN_PATH . 'includes/postgres-dashboard-helper.php');
+require_once(SDP_PLUGIN_PATH . 'includes/stock-helper.php');
 
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_styles');
 add_action('admin_enqueue_scripts', 'sdp_enqueue_admin_scripts');
@@ -162,6 +164,14 @@ function sdp_add_admin_menu()
         'dashicons-chart-area',
         60
     );
+    add_submenu_page(
+        'stock-data-plugin',
+        'CSV Import',
+        'CSV Import',
+        'manage_options',
+        'stock-data-plugin-csv-import',
+        'sdp_csv_import_page'
+    );
 }
 
 // Admin page callback
@@ -171,6 +181,14 @@ function sdp_admin_page()
         return;
     }
     require_once SDP_PLUGIN_PATH . 'includes/admin-settings-page.php';
+}
+
+function sdp_csv_import_page()
+{
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    require_once SDP_PLUGIN_PATH . 'includes/admin-csv-import-page.php';
 }
 
 // Cron for EOD Prices from stock_tickers
@@ -532,6 +550,7 @@ function create_stock_post($symbol)
                 }
                 $term_id = $term_id['term_id'];
             }
+            sdp_update_stock_sector_industry($post[0]->ID);
         }
         return;
     }
@@ -583,8 +602,9 @@ function create_stock_post($symbol)
         $wpdb->update(
             $table,
             ['post_created' => 1],
-            ['id' => $symbol->id]
+            ['id' => $post_id]
         );
+        sdp_update_stock_sector_industry($post_id);
     } else {
         error_log('Error creating post: ' . $post_id->get_error_message());
     }
@@ -770,6 +790,10 @@ add_action('admin_notices', function () {
 });
 
 add_action('wp_enqueue_scripts', function () {
+    if (!is_post_type_archive('report')) {
+        return;
+    }
+
     wp_enqueue_script(
         'ag-grid',
         'https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js',

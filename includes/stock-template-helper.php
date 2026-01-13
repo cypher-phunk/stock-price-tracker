@@ -7,7 +7,7 @@ function sdp_inject_stock_information()
 
   global $wpdb;
 
-  // Get symbol from the current post (adjust if you're using ACF or custom field)
+  // Get symbol from the current post (adjust if you're uing ACF or custom field)
   $symbol = get_field('ticker_symbol'); // adjust this if needed
 
   if (!$symbol) return;

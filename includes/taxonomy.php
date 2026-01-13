@@ -166,8 +166,33 @@ function sdp_assign_terms(int $post_id, array $sector_names, array $industry_pai
 }
 
 /**
+ * STOCK: Stock post sync sector/industry from DB
+ */
+function sdp_update_stock_sector_industry(int $stock_post_id): void {
+    [$sector, $industry] = sdp_get_stock_sector_industry_from_db($stock_post_id);
+
+    $sectors    = $sector ? [$sector] : [];
+    $industries = $industry ? [[$industry, $sector]] : [];
+
+    sdp_assign_terms($stock_post_id, $sectors, $industries);
+}
+
+/**
+ * STOCK: Stock post sync sector/industry from DB
+ */
+function sdp_update_stock_sector_industry_report(int $report_post_id, int $stock_post_id): void {
+    [$sector, $industry] = sdp_get_stock_sector_industry_from_db($stock_post_id);
+
+    $sectors    = $sector ? [$sector] : [];
+    $industries = $industry ? [[$industry, $sector]] : [];
+
+    sdp_assign_terms($report_post_id, $sectors, $industries);
+}
+
+/**
  * STOCK: on save, sync sector/industry from DB
  */
+/*
 add_action('save_post_' . SDP_STOCK_POST_TYPE, function ($post_id) {
     if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
     static $guard = false; if ($guard) return; $guard = true;
@@ -182,10 +207,12 @@ add_action('save_post_' . SDP_STOCK_POST_TYPE, function ($post_id) {
     add_action('save_post_' . SDP_STOCK_POST_TYPE, __FUNCTION__);
     $guard = false;
 }, 10);
+*/
 
 /**
  * REPORTS/BLOG POSTS: on save, aggregate from ACF relationship to Stocks
  */
+/*
 foreach (SDP_APPLY_TO_POST_TYPES as $ptype) {
     add_action('save_post_' . $ptype, function ($post_id) use ($ptype) {
         if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) return;
@@ -236,6 +263,7 @@ foreach (SDP_APPLY_TO_POST_TYPES as $ptype) {
         $guard = false;
     }, 10);
 }
+*/
 
 /**
  * Optional: hide taxonomy meta boxes from reports/posts (since we auto-assign)
@@ -322,4 +350,81 @@ if (defined('WP_CLI')) {
             WP_CLI::success('Reports/Posts backfilled.');
         }
     });
+}
+
+/**
+ * RESEARCHERS: get or create researcher type
+ */
+
+function sdp_get_or_create_company_type(string $name): ?WP_Term {
+    $name = trim($name);
+    if ($name === '') return null;
+
+    $term = get_term_by('name', $name, 'company_type');
+    if ($term && !is_wp_error($term)) return $term;
+
+    $created = wp_insert_term($name, 'company_type', ['slug' => sanitize_title($name)]);
+    if (is_wp_error($created)) {
+        // Race condition fallback
+        $term = get_term_by('name', $name, 'company_type');
+        return $term && !is_wp_error($term) ? $term : null;
+    }
+    return get_term($created['term_id'], 'company_type');
+}
+
+/**
+ * Assign researcher type to a given researcher post (idempotent)
+ */
+function sdp_assign_company_type(int $post_id, string $type_name): void {
+    $type_term = sdp_get_or_create_company_type($type_name);
+    if ($type_term) {
+        wp_set_post_terms($post_id, [(int)$type_term->term_id], 'company_type', false /* replace existing types */);
+    }
+}
+
+/*
+ * REPORTS: get or create report type
+ */
+function sdp_get_or_create_report_type(string $name): ?WP_Term {
+    $name = trim($name);
+    if ($name === '') return null;
+
+    $term = get_term_by('name', $name, 'report_type');
+    if ($term && !is_wp_error($term)) return $term;
+
+    $created = wp_insert_term($name, 'report_type', ['slug' => sanitize_title($name)]);
+    if (is_wp_error($created)) {
+        // Race condition fallback
+        $term = get_term_by('name', $name, 'report_type');
+        return $term && !is_wp_error($term) ? $term : null;
+    }
+    return get_term($created['term_id'], 'report_type');
+}
+
+/**
+ * Assign report type to a given report post (idempotent)
+ */
+function sdp_assign_report_type(int $post_id, string $type_name): void {
+    $type_term = sdp_get_or_create_report_type($type_name);
+    if ($type_term) {
+        wp_set_post_terms($post_id, [(int)$type_term->term_id], 'report_type', false /* replace existing types */);
+    }
+}
+
+/**
+ * Assign report post sectors and industries to a given the related stock - helper
+ */
+function sdp_assign_report_sectors_and_industries(int $post_id, int $stock_id): void {
+    $stock_sectors = wp_get_post_terms($stock_id, 'sector', ['fields' => 'names']);
+    $stock_industry_terms = wp_get_post_terms($stock_id, 'industry');
+    if (is_wp_error($stock_sectors) || is_wp_error($stock_industry_terms)) {
+        return;
+    }
+    if (empty($stock_sectors) || empty($stock_industry_terms)) {
+        // try to repopulate
+        sdp_update_stock_sector_industry($stock_id);
+        $stock_sectors = wp_get_post_terms($stock_id, 'sector', ['fields' => 'names']);
+        $stock_industry_terms = wp_get_post_terms($stock_id, 'industry');
+    }
+    sdp_update_stock_sector_industry_report($post_id, $stock_id);
 }

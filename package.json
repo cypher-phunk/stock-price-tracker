@@ -1,0 +1,25 @@
+{
+  "name": "stock-price-tracker",
+  "version": "1.0.0",
+  "description": "We recommend that you disable the built-in wp cron and ensure that your cron job runs ontime.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cypher-phunk/stock-price-tracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/cypher-phunk/stock-price-tracker/issues"
+  },
+  "homepage": "https://github.com/cypher-phunk/stock-price-tracker#readme",
+  "dependencies": {
+    "datatables.net-dt": "^2.3.6",
+    "luxon": "^3.7.2"
+  }
+}
